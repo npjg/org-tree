@@ -1,0 +1,22 @@
+#+TITLE: org-tree
+#+AUTHOR: Nathanael Gentry
+
+I could not decide whether I wanted to have many org files or just one, so I
+decided to aim for the best of both worlds.
+
+If you choose to use multiple files,
+you then face the dilemma of linking your files together. You also have two
+levels of nomenclature: the logical flow of your org tree, and the physical
+paths on your system. However, using multiple files works well when you have
+lots of content or want to segregate notes by project, etc.
+
+ =org-tree= allows you to link org files together through a =SUBTREE= property.
+ With an ID and this property, which references another org file, that file's
+ contents become a logical subtree to the headline. So, when it matters, you
+ just see a continuous outline path.
+
+=org-tree= abstracts away the physical representation of your org files as much
+as possible. So it is possible to let the attachment directory functionality
+manage all your files. I do exactly this. I have =index.org= in my root Org
+directory, and then everything else is autofiled according to ID. This helps
+reduce the headache of maintaining two separate naming schemes.

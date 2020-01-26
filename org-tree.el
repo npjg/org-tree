@@ -71,6 +71,15 @@ With RELATIVE, do not start the path with an `org-tree-path-separator'."
   (if (stringp path) path
     (mapconcat 'identity (append (unless relative (list "")) path) org-tree-path-separator)))
 
+(defun org-tree-get-file-buffer (file to-release)
+  "Get an agenda buffer visiting FILE. If the buffer needs to be
+created and TO-RELEASE is non-nil, add it to the list of buffers
+in `org-agenda-new-buffers' which might be released later."
+  (if to-release
+    (let ((org-agenda-new-buffers))
+      (org-get-agenda-file-buffer file))
+    (org-get-agenda-file-buffer file)))
+
 (defun org-tree-resolve-subtree-file-name (&optional pom)
   "Provide the full file name for the org-tree subtree at POM, or return nil if a subtree does not exist there.
 
@@ -96,7 +105,7 @@ subtree.
 
 When TYPE is :physical, link the physical file of this subtree to
 its outline path entry point."
-  (with-current-buffer (org-get-agenda-file-buffer subtree)
+  (with-current-buffer (org-tree-get-file-buffer subtree (org-entry-get nil "NO_AGENDA"))
     (org-tree-flatten (remove 'nil (org-map-entries
       (lambda ()
         (let* ((subtree (org-tree-resolve-subtree-file-name)))
@@ -124,6 +133,7 @@ recalculate both tables anew before returning the requested table."
       (setq org-tree-lookup-table
             (list :physical (org-tree-lookup-table-1 nil org-tree-root :physical)
                   :logical (org-tree-lookup-table-1 nil org-tree-root :logical)))
+      (setq org-agenda-files org-id-files)
       (org-release-buffers org-agenda-new-buffers)))
   (if type (plist-get org-tree-lookup-table type)
     org-tree-lookup-table))

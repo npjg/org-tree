@@ -92,9 +92,9 @@ the SUBTREE property or, lacking that, by the format string
   (let ((id (org-id-get))
         (ad (org-attach-dir)))
     (when (and id ad)
-      (ignore-errors (expand-file-name
+      (ignore-errors (file-truename (expand-file-name
        (or (org-entry-get nil "SUBTREE" nil)
-           (format-spec org-tree-default-subtree-file-name (format-spec-make ?i id))) ad))))))
+           (format-spec org-tree-default-subtree-file-name (format-spec-make ?i id))) ad)))))))
 
 (defun org-tree-lookup-table-1 (path subtree type)
   "Recursively build the internal lookup plist of type TYPE with initial path PATH
@@ -110,17 +110,17 @@ its outline path entry point."
       (lambda ()
         (let* ((subtree (org-tree-resolve-subtree-file-name)))
           (when subtree
-            (let* ((path (if (or path (string= (buffer-file-name) org-tree-root))
+            (let* ((path (if (or path (string= (file-truename (buffer-file-name)) (file-truename org-tree-root)))
                          (append path (unless (org-before-first-heading-p)
                                         (ad-with-originals 'org-get-outline-path
                                           (org-get-outline-path t))))
                        (org-tree-outline-path nil t)))
-               (spath (org-tree-path-string path))
-               (app (cond ((eq type :physical) (list subtree spath))
+                   (spath (org-tree-path-string path))
+                   (subtree-exists (ignore-errors (file-exists-p subtree)))
+               (app (cond ((eq type :physical) (when subtree-exists (list subtree spath)))
                           ((eq type :logical) (list spath (org-id-get)))
                           (t (user-error "Bad lookup plist type")))))
-              (if (ignore-errors (file-exists-p subtree))
-                  (append app (org-tree-lookup-table-1 path subtree type))
+              (if subtree-exists (append app (org-tree-lookup-table-1 path subtree type))
                 app)))))
       t 'file)))))
 
@@ -129,7 +129,8 @@ its outline path entry point."
 recalculate both tables anew before returning the requested table."
   (unless org-tree-root (user-error "Tree index cannot be nil"))
   (unless (and org-tree-lookup-table (not force))
-    (let (org-agenda-new-buffers)
+    (let (org-agenda-new-buffers
+          org-mode-hook)
       (setq org-tree-lookup-table
             (list :physical (org-tree-lookup-table-1 nil org-tree-root :physical)
                   :logical (org-tree-lookup-table-1 nil org-tree-root :logical)))
@@ -156,7 +157,7 @@ includes the current headline. See `org-get-outline-path' for
 documentation of USE-CACHE."
   (ad-with-originals 'org-get-outline-path
     (let ((res (append
-                (org-tree-path-list (or (lax-plist-get (org-tree-lookup-table :physical) (buffer-file-name)) ""))
+                (org-tree-path-list (or (lax-plist-get (org-tree-lookup-table :physical) (file-truename (buffer-file-name))) ""))
                 (org-get-outline-path with-self use-cache))))
       (if as-string (org-tree-path-string res) res))))
 

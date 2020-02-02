@@ -231,7 +231,33 @@ element in the perspective tree."
   :global t
   (if org-tree-mode
       (progn
-        (advice-add 'org-get-outline-path :around #'org-tree-outline-path))
-    (advice-remove 'org-get-outline-path #'org-tree-outline-path)))
+        (org-tree-lookup-table)
+        (advice-add 'org-get-outline-path :around #'org-tree-outline-path)
+        (advice-add 'org-capture-set-target-location :around #'org-tree-capture-set-target-location)
+        )
+    (advice-remove 'org-get-outline-path #'org-tree-outline-path)
+    (advice-remove 'org-capture-set-target-location #'org-tree-capture-set-target-location)
+    ))
+
+(defun org-tree-capture-set-target-location (func &optional target)
+  "Add two additional org-capture target location types:
+
+        (olp \"org-tree/outline/path\")
+
+        (olp+attach base-target-type \"org-tree/outline/path\" \"path/to/attachment\"
+
+For more information on target location types, see `org-capture-templates'."
+  (let ((args '(function (lambda ()))))
+    (pcase (or target (org-capture-get :target))
+      (`(olp ,outline-path)
+       (let ((m (org-tree-find-olp outline-path)))
+         (set-buffer (marker-buffer m))
+         (org-capture-put-target-region-and-position)
+         (widen)
+         (goto-char m)
+         (set-marker m nil)))
+      (`(olp+attach ,type ,outline-path ,attach)
+       (setq args `(,type ,(org-tree-resolve-attachment-path outline-path attach)))))
+      (funcall func args)))
 
 (provide 'org-tree)

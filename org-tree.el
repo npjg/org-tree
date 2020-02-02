@@ -23,6 +23,7 @@
 
 
 (require 'org)
+(require 'cl)
 (require 'org-attach)
 
 (defgroup org-tree 'nil
@@ -54,16 +55,18 @@ subtree files, including the org extension.")
 (defvar org-tree-lookup-table nil
   "An alist mapping subtree file names to logical paths")
 
+(defsubst org-tree-safe-format (item spec)
+  "Applies `format-spec' to ITEM if it is a string; otherwise, return the argument as it is."
+  (if (and spec (stringp item)) (format-spec item spec) item))
+
 (defun org-tree-format-spec ()
   (apply #'format-spec-make (org-tree-format-spec-1 org-tree-format-spec)))
 
 (defun org-tree-format-spec-1 (spec &optional new-spec)
   "Replace each symbol name in SPEC with its value in the current dynamic scope, or nil otherwise."
-  (if spec
-      (progn
-        (setq new-spec
-              (append new-spec (list (car spec) (ignore-errors (symbol-value (cadr spec))))))
-        (org-tree-format-spec-1 (cddr spec) new-spec))
+  (if spec (progn (setq new-spec
+    (append new-spec (list (car spec) (ignore-errors (symbol-value (cadr spec))))))
+                  (org-tree-format-spec-1 (cddr spec) new-spec))
     new-spec))
 
 (defun true-listp (object)
@@ -221,23 +224,96 @@ documentation of USE-CACHE."
       (if as-string (org-tree-path-string res) res))))
 
 (defun org-tree-push-lookup-table-maybe (subtree path id)
- (when (equal (file-extension subtree) "org") (push (cons (list subtree id) (org-tree-path-string path)) org-tree-lookup-table)))
+  "If SUBTREE references an org file, as determined from its
+extension, add it into the `org-tree-lookup-table' variable."
+  (when (equal (file-extension subtree) "org")
+    (push (cons (list subtree id) (org-tree-path-string path)) org-tree-lookup-table)))
 
-(define-minor-mode org-tree-mode
-  "Logically combine many Orgdocuments into one. This minor mode
-uses `org-perspective-lookup-table' to find the full outline path of any
-element in the perspective tree."
-  :lighter " OP"
-  :global t
-  (if org-tree-mode
-      (progn
-        (org-tree-lookup-table)
-        (advice-add 'org-get-outline-path :around #'org-tree-outline-path)
-        (advice-add 'org-capture-set-target-location :around #'org-tree-capture-set-target-location)
-        )
-    (advice-remove 'org-get-outline-path #'org-tree-outline-path)
-    (advice-remove 'org-capture-set-target-location #'org-tree-capture-set-target-location)
-    ))
+(cl-defun org-tree-create
+    (&key spec force headline subtree attach-dir project attachments template)
+  "Create a subtree as a subheading of the heading at point.
+
+With FORCE, silenty overwrite whatever subtree data might
+already exist in the target position. Otherwise, if subtree
+data already exist at the target position, the user is prompted.
+Note that this does not guard against creating non-unique
+headlines, which would cause trouble with the path lookup mechanism.
+
+SPEC provides an alist generated through `format-spec-make' that
+is used to format HEADLINE, SUBTREE, ATTACH-DIR, PROJECT,
+ATTACHMENTS, and TEMPLATE, where provided.
+
+HEADLINE specifies the title of the created subtree headline,
+which is always created at an outline level one greater than the
+outline level of point.
+
+SUBTREE specifies the name (relative path) of the file that
+contains the org-tree subtree. If you want this headline to be
+recognized as a subtree without having a physical file, e.g. for
+managing attachments, set SUBTREE to the empty string. To use the
+default subtree name given by `org-tree-default-subtree-file-name
+' explicitly set SUBTREE to t.
+
+ATTACH-DIR, when non-nil but not t, sepecifies the subtree's
+attachment directory. When explicitly t, use a default attachment
+directory from `org-attach-dir'. In either case, SUBTREE will be
+created within ATTACH-DIR.
+
+PROJECT, a separate entity from ATTACH-DIR, specifies where the
+subtree's working directory should be. Keeping the attachment
+directory and the project directory separate is helpful if, for
+instance, you want to keep todo lists and documentation out of
+version control, but you want your project's code in version
+control.
+
+ATTACHMENTS takes the literal string value of the attachments
+property, as set by `org-attach'.
+
+TEMPLATE specifies a format string for filling a newly-created
+subtree file. It takes values from both SPEC and
+`org-tree-default-format-spec'."
+  (let ((headline (org-tree-safe-format headline spec))
+        (subtree (org-tree-safe-format subtree spec))
+        (attach-dir (org-tree-safe-format attach-dir spec))
+        (project (org-tree-safe-format project spec))
+        (attachments (org-tree-safe-format attachments spec))
+        (template (org-tree-safe-format template spec))
+        id)
+      (unless (eq (buffer-mode) 'org-mode)
+        (user-error "Not in an Org buffer"))
+      (beginning-of-line)
+      (when headline
+        (if (> (org-outline-level) 0)
+            (org-insert-subheading '(4))
+          (org-insert-heading '(16)))
+        (insert headline))
+      (setq id (org-id-get-create t))
+      (when (or (not (ignore-errors (file-exists-p (org-tree-resolve-subtree-file-name))))
+                force (y-or-n-p "Overwrite existing subtree data?"))
+        (when attach-dir
+          (cond ((eq t attach-dir) (org-attach-dir t))
+                 (attach-dir (org-entry-put nil "ATTACH_DIR" root))))
+          (setq attach-dir (org-attach-dir))
+        (when project (org-entry-put nil "PROJECT" project))
+        (when attachments (org-entry-put nil "Attachments" attachments))
+        (if (or (eq t subtree) (and template (not subtree)))
+            (progn
+              (setq subtree (format-spec org-tree-default-subtree-file-name (org-tree-format-spec)))
+              (unless template (setq template (concat "#+TITLE: " headline))))
+          (org-entry-put nil "SUBTREE" subtree)
+          (unless attach-dir (user-error "Attachment directory required to place subtree"))
+          (setq subtree (expand-file-name subtree attach-dir)))
+        (when (and subtree template (not (file-exists-p (expand-file-name subtree attach-dir))))
+          (save-excursion
+            (find-file subtree)
+            (insert template)
+            (save-buffer)
+            (kill-buffer)))
+        (save-buffer)
+        (when (equal (file-name-extension subtree) "org")
+          (org-tree-push-lookup-table subtree (org-get-outline-path t) id))
+        (message "New subtree in %s" subtree)
+        subtree)))
 
 (defun org-tree-capture-set-target-location (func &optional target)
   "Add two additional org-capture target location types:
@@ -245,6 +321,8 @@ element in the perspective tree."
         (olp \"org-tree/outline/path\")
 
         (olp+attach base-target-type \"org-tree/outline/path\" \"path/to/attachment\"
+
+        (olp+subtree \"org-tree/outline/path\" \"node headline\" \"subtree file name\")
 
 For more information on target location types, see `org-capture-templates'."
   (let ((args '(function (lambda ()))))
@@ -257,7 +335,32 @@ For more information on target location types, see `org-capture-templates'."
          (goto-char m)
          (set-marker m nil)))
       (`(olp+attach ,type ,outline-path ,attach)
-       (setq args `(,type ,(org-tree-resolve-attachment-path outline-path attach)))))
-      (funcall func args)))
+       (setq args `(,type ,(org-tree-resolve-attachment-path outline-path attach))))
+      (`(olp+subtree ,outline-path ,headline ,subtree)
+       (flet ((org-capture-select-template (&optional keys)
+              `(" " " " entry (olp ,outline-path) ,headline :immediate-finish t)))
+         (let* ((org-capture-plist (let (org-capture-plist)
+                  (org-capture)
+                  org-capture-plist))
+                (buf (org-capture-get :buffer))
+                (loc (org-capture-get :insertion-point)))
+           (with-current-buffer buf
+             (goto-char loc)
+             (setq args `(file ,(org-tree-create :subtree subtree))))))))
+    (funcall func args)))
+
+(define-minor-mode org-tree-mode
+  "Logically combine many Orgdocuments into one. This minor mode
+uses `org-tree-lookup-table' to find the full outline path of any
+element in the perspective tree."
+  :lighter " OP"
+  :global t
+  (if org-tree-mode
+      (progn
+        (org-tree-lookup-table)
+        (advice-add 'org-get-outline-path :around #'org-tree-outline-path)
+        (advice-add 'org-capture-set-target-location :around #'org-tree-capture-set-target-location))
+    (advice-remove 'org-get-outline-path #'org-tree-outline-path)
+    (advice-remove 'org-capture-set-target-location #'org-tree-capture-set-target-location)))
 
 (provide 'org-tree)

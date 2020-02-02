@@ -194,6 +194,18 @@ return the highest subtree for which a match is found."
           (path (org-find-olp (append (list (caar info)) path)))
           (t (set-marker (make-marker) 0 (org-get-agenda-file-buffer (caar info)))))))
 
+(defun org-tree-resolve-attachment-path (path attachment)
+  "Return the full physical path to attachment ATTACHMENT of the
+  subtree at outline path PATH. A valid attachment directory,
+  returned by `org-attach-dir' is required to to properly expand
+  the file name Note that ATTACHMENT need not exist; it must just
+  be a file name."
+  (let* ((ad (org-with-point-at
+                 (org-id-find (or (cadar (org-tree-reverse-lookup (org-tree-path-string path)))
+                                  (user-error "Subtree not found")) t)
+                              (org-attach-dir))))
+    (when ad (expand-file-name attachment ad))))
+
 (defun org-tree-outline-path (&optional func with-self use-cache as-string)
   "Return the logical path of the physical headline at point.
 FUNC is an unused argument for compatibility with the advice
@@ -207,6 +219,9 @@ documentation of USE-CACHE."
                 (org-tree-path-list (or (org-tree-lookup (file-truename (buffer-file-name))) ""))
                 (org-get-outline-path with-self use-cache))))
       (if as-string (org-tree-path-string res) res))))
+
+(defun org-tree-push-lookup-table-maybe (subtree path id)
+ (when (equal (file-extension subtree) "org") (push (cons (list subtree id) (org-tree-path-string path)) org-tree-lookup-table)))
 
 (define-minor-mode org-tree-mode
   "Logically combine many Orgdocuments into one. This minor mode

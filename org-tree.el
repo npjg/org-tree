@@ -238,92 +238,6 @@ extension, add it into the `org-tree-lookup-table' variable."
   (when (equal (file-extension subtree) "org")
     (push (cons (list subtree id) (org-tree-path-string path)) org-tree-lookup-table)))
 
-(cl-defun org-tree-create
-    (&key spec force headline subtree attach-dir project attachments template)
-  "Create a subtree as a subheading of the heading at point.
-
-With FORCE, silenty overwrite whatever subtree data might
-already exist in the target position. Otherwise, if subtree
-data already exist at the target position, the user is prompted.
-Note that this does not guard against creating non-unique
-headlines, which would cause trouble with the path lookup mechanism.
-
-SPEC provides an alist generated through `format-spec-make' that
-is used to format HEADLINE, SUBTREE, ATTACH-DIR, PROJECT,
-ATTACHMENTS, and TEMPLATE, where provided.
-
-HEADLINE specifies the title of the created subtree headline,
-which is always created at an outline level one greater than the
-outline level of point.
-
-SUBTREE specifies the name (relative path) of the file that
-contains the org-tree subtree. If you want this headline to be
-recognized as a subtree without having a physical file, e.g. for
-managing attachments, set SUBTREE to the empty string. To use the
-default subtree name given by `org-tree-default-subtree-file-name
-' explicitly set SUBTREE to t.
-
-ATTACH-DIR, when non-nil but not t, sepecifies the subtree's
-attachment directory. When explicitly t, use a default attachment
-directory from `org-attach-dir'. In either case, SUBTREE will be
-created within ATTACH-DIR.
-
-PROJECT, a separate entity from ATTACH-DIR, specifies where the
-subtree's working directory should be. Keeping the attachment
-directory and the project directory separate is helpful if, for
-instance, you want to keep todo lists and documentation out of
-version control, but you want your project's code in version
-control.
-
-ATTACHMENTS takes the literal string value of the attachments
-property, as set by `org-attach'.
-
-TEMPLATE specifies a format string for filling a newly-created
-subtree file. It takes values from both SPEC and
-`org-tree-default-format-spec'."
-  (let ((headline (org-tree-safe-format headline spec))
-        (subtree (org-tree-safe-format subtree spec))
-        (attach-dir (org-tree-safe-format attach-dir spec))
-        (project (org-tree-safe-format project spec))
-        (attachments (org-tree-safe-format attachments spec))
-        (template (org-tree-safe-format template spec))
-        id)
-      (unless (eq (buffer-mode) 'org-mode)
-        (user-error "Not in an Org buffer"))
-      (beginning-of-line)
-      (when headline
-        (if (> (org-outline-level) 0)
-            (org-insert-subheading '(4))
-          (org-insert-heading '(16)))
-        (insert headline))
-      (setq id (org-id-get-create t))
-      (when (or (not (ignore-errors (file-exists-p (org-tree-resolve-subtree-file-name))))
-                force (y-or-n-p "Overwrite existing subtree data?"))
-        (when attach-dir
-          (cond ((eq t attach-dir) (org-attach-dir t))
-                 (attach-dir (org-entry-put nil "ATTACH_DIR" root))))
-          (setq attach-dir (org-attach-dir))
-        (when project (org-entry-put nil "PROJECT" project))
-        (when attachments (org-entry-put nil "Attachments" attachments))
-        (if (or (eq t subtree) (and template (not subtree)))
-            (progn
-              (setq subtree (format-spec org-tree-default-subtree-file-name (org-tree-format-spec)))
-              (unless template (setq template (concat "#+TITLE: " headline))))
-          (org-entry-put nil "SUBTREE" subtree)
-          (unless attach-dir (user-error "Attachment directory required to place subtree"))
-          (setq subtree (expand-file-name subtree attach-dir)))
-        (when (and subtree template (not (file-exists-p (expand-file-name subtree attach-dir))))
-          (save-excursion
-            (find-file subtree)
-            (insert template)
-            (save-buffer)
-            (kill-buffer)))
-        (save-buffer)
-        (when (equal (file-name-extension subtree) "org")
-          (org-tree-push-lookup-table subtree (org-get-outline-path t) id))
-        (message "New subtree in %s" subtree)
-        subtree)))
-
 (defun org-tree-capture-set-target-location (func &optional target)
   "Add two additional org-capture target location types:
 
@@ -358,18 +272,27 @@ For more information on target location types, see `org-capture-templates'."
              (setq args `(file ,(org-tree-create :subtree subtree))))))))
     (funcall func args)))
 
-(defun org-tree-meta-return (func arg)
+(defun org-tree-meta-return (func &optional arg)
+  "Insert a hew org-tree subtree. Calls `org-meta-return.'"
   (if (equal arg '(16))
-      (let* ((headline (read-string "Headline: "))
+      (let* ((info (when (boundp 'org-tree-info) org-tree-info))
+             (headline (read-string "Headline: "))
              (res (progn (funcall func arg) (insert headline)))
              (id (org-id-get-create))
-             (ad (org-attach-dir t))
-             (subtree (expand-file-name (org-tree-format org-tree-default-subtree-file-name) ad)))
-        (unless (file-exists-p subtree) (save-excursion
-          (find-file subtree)
-          (insert (org-tree-format org-tree-default-subtree-template))
+             (ad (cons (org-attach-dir nil t) (or (plist-get info :attach-dir) (org-attach-dir t))))
+             (pd (plist-get info :project))
+             (subtree (cons (org-tree-format org-tree-default-subtree-file-name)
+                            (org-tree-format (or (plist-get info :subtree) org-tree-default-subtree-file-name))))
+             (fullpath (expand-file-name (cdr subtree) (cdr ad))))
+        (or (equal (car ad) (cdr ad)) (org-entry-put "ATTACH_DIR" (cdr ad)))
+        (unless (file-exists-p fullpath) (save-excursion
+          (beginning-of-line)
+          (setq headline (plist-get (cadr (org-element-headline-parser (point-at-eol))) :raw-value))
+          (find-file fullpath)
+          (insert (org-tree-format (or (plist-get info :template) org-tree-default-subtree-template)))
           (save-buffer)
-          (kill-buffer))))
+          (kill-buffer)
+          (or (equal (car subtree) (cdr subtree)) (org-entry-put "SUBTREE" (cdr subtree))))))
     (funcall func arg)))
 
 (define-minor-mode org-tree-mode

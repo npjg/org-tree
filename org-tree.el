@@ -47,6 +47,10 @@
   "A format string that specifies the default fulename for
 subtree files, including the org extension.")
 
+(defcustom org-tree-default-subtree-template "#+TITLE: %h"
+  "A format string that specifies the default template for
+  subtree files, including the org extension.")
+
 (defcustom org-tree-root nil
   "The org file that holds root-level subtrees."
     :type '(file :must-match t)
@@ -68,6 +72,11 @@ subtree files, including the org extension.")
     (append new-spec (list (car spec) (ignore-errors (symbol-value (cadr spec))))))
                   (org-tree-format-spec-1 (cddr spec) new-spec))
     new-spec))
+
+(defun org-tree-format (item)
+  "Format ITEM according to `org-tree-format-spec', substituting
+  in dynamically bound variables."
+  (when (stringp item) (format-spec item (org-tree-format-spec))))
 
 (defun true-listp (object)
   "Return non-`nil' if OBJECT is a true list."
@@ -349,18 +358,34 @@ For more information on target location types, see `org-capture-templates'."
              (setq args `(file ,(org-tree-create :subtree subtree))))))))
     (funcall func args)))
 
+(defun org-tree-meta-return (func arg)
+  (if (equal arg '(16))
+      (let* ((headline (read-string "Headline: "))
+             (res (progn (funcall func arg) (insert headline)))
+             (id (org-id-get-create))
+             (ad (org-attach-dir t))
+             (subtree (expand-file-name (org-tree-format org-tree-default-subtree-file-name) ad)))
+        (unless (file-exists-p subtree) (save-excursion
+          (find-file subtree)
+          (insert (org-tree-format org-tree-default-subtree-template))
+          (save-buffer)
+          (kill-buffer))))
+    (funcall func arg)))
+
 (define-minor-mode org-tree-mode
   "Logically combine many Orgdocuments into one. This minor mode
-uses `org-tree-lookup-table' to find the full outline path of any
-element in the perspective tree."
+ues `org-tree-lookup-table' to find the full outline path of any
+ement in the perspective tree."
   :lighter " OP"
   :global t
   (if org-tree-mode
       (progn
         (org-tree-lookup-table)
         (advice-add 'org-get-outline-path :around #'org-tree-outline-path)
+        (advice-add 'org-meta-return :around #'org-tree-meta-return)
         (advice-add 'org-capture-set-target-location :around #'org-tree-capture-set-target-location))
     (advice-remove 'org-get-outline-path #'org-tree-outline-path)
+    (advice-remove 'org-meta-return #'org-tree-meta-return)
     (advice-remove 'org-capture-set-target-location #'org-tree-capture-set-target-location)))
 
 (provide 'org-tree)

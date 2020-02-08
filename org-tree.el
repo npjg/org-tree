@@ -78,6 +78,20 @@ subtree files, including the org extension.")
   in dynamically bound variables."
   (when (stringp item) (format-spec item (org-tree-format-spec))))
 
+(defun org-tree-split-file-name (file &optional always-parse-as-file)
+  "Take a file name FILE, and returns a list whose `car' is a
+relative file name and whose `cdr' is a directory name.  If FILE
+is actually a directory name, the `cdr' will be the empty string;
+set `always-parse-as-file' true to convert FILE to a directory
+file name before parsing it.  View this function as the inverse of
+`expand-file-name'."
+  (let* ((fixed
+          (if always-parse-as-file
+              file
+            (directory-file-name file)))
+         (parent (file-name-directory fixed)))
+    (cons parent (directory-file-name (string-remove-prefix (or parent "") file)))))
+
 (defun true-listp (object)
   "Return non-`nil' if OBJECT is a true list."
   (and (listp object)  (null (cdr (last object)))))
@@ -269,31 +283,50 @@ For more information on target location types, see `org-capture-templates'."
                 (loc (org-capture-get :insertion-point)))
            (with-current-buffer buf
              (goto-char loc)
-             (setq args `(file ,(org-tree-create :subtree subtree))))))))
+             (setq args `(file ,(let ((org-tree-info `(:subtree ,subtree))) (org-meta-return '(16))))))))
     (funcall func args)))
 
 (defun org-tree-meta-return (func &optional arg)
   "Insert a hew org-tree subtree. Calls `org-meta-return.'"
   (if (equal arg '(16))
       (let* ((info (when (boundp 'org-tree-info) org-tree-info))
-             (headline (read-string "Headline: "))
+             (headline (or (plist-get info :headline) (read-string "Headline: ")))
              (res (progn (funcall func arg) (insert headline)))
              (id (org-id-get-create))
-             (ad (cons (org-attach-dir nil t) (or (plist-get info :attach-dir) (org-attach-dir t))))
+             (ad (file-name-as-directory (progn (and (plist-get info :attach-dir)
+                          (org-entry-put nil "ATTACH_DIR" (plist-get info :attach-dir)))
+                      (org-attach-dir t))))
              (pd (plist-get info :project))
-             (subtree (cons (org-tree-format org-tree-default-subtree-file-name)
-                            (org-tree-format (or (plist-get info :subtree) org-tree-default-subtree-file-name))))
-             (fullpath (expand-file-name (cdr subtree) (cdr ad))))
-        (or (equal (car ad) (cdr ad)) (org-entry-put "ATTACH_DIR" (cdr ad)))
-        (unless (file-exists-p fullpath) (save-excursion
+             (st (plist-get info :subtree))
+             (subtree (org-tree-format
+                       (if (not st) org-tree-default-subtree-file-name
+                         (if (equal st 'ask) (setq st (read-file-name "Subtree: " ad)) st)
+                         (when (equal (car (org-tree-split-file-name st)) ad)
+                           (setq st (cdr (org-tree-split-file-name st))))
+                         (unless (file-directory-p st) (org-entry-put nil "SUBTREE" st))
+                         (if (file-name-absolute-p st) st (expand-file-name st ad))))))
+        (unless (file-exists-p subtree) (save-excursion
           (beginning-of-line)
           (setq headline (plist-get (cadr (org-element-headline-parser (point-at-eol))) :raw-value))
-          (find-file fullpath)
+          (find-file subtree)
           (insert (org-tree-format (or (plist-get info :template) org-tree-default-subtree-template)))
           (save-buffer)
-          (kill-buffer)
-          (or (equal (car subtree) (cdr subtree)) (org-entry-put "SUBTREE" (cdr subtree))))))
+          (kill-buffer)))
+        subtree)
     (funcall func arg)))
+
+;; (defmacro tracked-let (varlist &rest body) `(let ,inputs ,(cons ,@body return
+;;   the values from all the bound variables as an alist: We need to loop over
+;; ;;   all the symbols somehow.
+;; (defmacro tracked-let (varlist &rest body)
+;;   "Bind variables according to VARLIST and tnen eval BODY. Set
+;; global `tracked-let' to the terminal values of all variables
+;; bound in VARLIST."
+;;   `(let* ((,@varlist
+;;           (b ,@body)))
+;;      (setq test (mapcar (lambda (v) (symbol-value (car v))) (quote ,varlist)))
+;;      b
+;;      ))
 
 (define-minor-mode org-tree-mode
   "Logically combine many Orgdocuments into one. This minor mode

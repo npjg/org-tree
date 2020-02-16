@@ -262,8 +262,8 @@ extension, add it into the `org-tree-lookup-table' variable."
         (olp+subtree \"org-tree/outline/path\" \"node headline\" \"subtree file name\")
 
 For more information on target location types, see `org-capture-templates'."
-  (let ((args '(function (lambda ()))))
-    (pcase (or target (org-capture-get :target))
+  (let ((args (org-capture-get :target)))
+    (pcase (or target args)
       (`(olp ,outline-path)
        (let ((m (org-tree-find-olp outline-path)))
          (set-buffer (marker-buffer m))

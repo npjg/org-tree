@@ -119,15 +119,6 @@ With RELATIVE, do not start the path with an `org-tree-path-separator'."
   (if (stringp path) path
     (mapconcat 'identity (append (unless relative (list "")) path) org-tree-path-separator)))
 
-(defun org-tree-get-file-buffer (file to-release)
-  "Get an agenda buffer visiting FILE. If the buffer needs to be
-created and TO-RELEASE is non-nil, add it to the list of buffers
-in `org-agenda-new-buffers' which might be released later."
-  (if to-release
-    (let ((org-agenda-new-buffers))
-      (org-get-agenda-file-buffer file))
-    (org-get-agenda-file-buffer file)))
-
 (defun org-tree-resolve-subtree-file-name (&optional pom)
   "Provide the full file name for the org-tree subtree at POM, or
   return nil if a subtree does not exist there. This function
@@ -149,10 +140,16 @@ the SUBTREE property or, lacking that, by the format string
         (when (and id ad) (ignore-errors (file-truename
              (expand-file-name (or subtree (org-tree-format org-tree-default-subtree-file-name)) ad))))))))
 
-(defun org-tree-lookup-table-1 (path subtree &optional ip)
+(defun org-tree-lookup-table-1 (path subtree &optional in-progress agenda-exclude-subtrees)
   "Recursively build the internal lookup alist with initial path PATH
-for the subtree file SUBTREE."
-  (with-current-buffer (org-tree-get-file-buffer subtree (org-entry-get nil "NO_AGENDA"))
+for the subtree file SUBTREE.
+
+All subtree files not explicitly excluded will be addded to
+`org-agenda-files'.  To exclude a subtree, include property
+`AGENDA_EXCLUDE_SUBTREE'."
+  (with-current-buffer (org-get-agenda-file-buffer subtree)
+    (unless agenda-exclude-subtrees
+      (add-to-list 'org-agenda-files (buffer-file-name)))
     (remove 'nil (org-map-entries
       (lambda ()
         (let ((subtree (org-tree-resolve-subtree-file-name)))
@@ -167,7 +164,8 @@ for the subtree file SUBTREE."
                                         (equal (file-name-extension subtree) "org")
                                         (ignore-errors (file-exists-p subtree))))
                    (app (when subtree-exists (cons (list subtree (org-id-get)) spath)))
-                   (rec (when subtree-exists (org-tree-lookup-table-1 path subtree ip))))
+                   (rec (when subtree-exists (org-tree-lookup-table-1 path subtree in-progress
+                                              (or agenda-exclude-subtrees (org-entry-get-with-inheritance "AGENDA_EXCLUDE_SUBTREE"))))))
               (if (and subtree-exists rec)
                   (append (list app) rec)
                 app)))))
@@ -186,7 +184,6 @@ subtree file and chose `cdr' is the subtree's ID, and has as
   (unless (and org-tree-lookup-table (not force))
     (let (org-agenda-new-buffers org-mode-hook)
       (setq org-tree-lookup-table (org-tree-flatten (org-tree-lookup-table-1 nil org-tree-root)))
-      (setq org-agenda-files org-id-files)
       (org-release-buffers org-agenda-new-buffers)))
       org-tree-lookup-table)
 

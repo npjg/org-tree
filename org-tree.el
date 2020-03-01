@@ -147,9 +147,7 @@ the SUBTREE property or, lacking that, by the format string
           (ad (org-attach-dir)))
       (if (equal subtree "") subtree
         (when (and id ad) (ignore-errors (file-truename
-             (expand-file-name
-              (or (org-entry-get nil "SUBTREE" nil)
-                  (format-spec org-tree-default-subtree-file-name (org-tree-format-spec))) ad))))))))
+             (expand-file-name (or subtree (org-tree-format org-tree-default-subtree-file-name)) ad))))))))
 
 (defun org-tree-lookup-table-1 (path subtree &optional ip)
   "Recursively build the internal lookup alist with initial path PATH
@@ -249,7 +247,7 @@ documentation of USE-CACHE."
 (defun org-tree-push-lookup-table-maybe (subtree path id)
   "If SUBTREE references an org file, as determined from its
 extension, add it into the `org-tree-lookup-table' variable."
-  (when (equal (file-extension subtree) "org")
+  (when (equal (file-name-extension subtree) "org")
     (push (cons (list subtree id) (org-tree-path-string path)) org-tree-lookup-table)))
 
 (defun org-tree-capture-set-target-location (func &optional target)
@@ -266,6 +264,7 @@ For more information on target location types, see `org-capture-templates'."
     (pcase (or target args)
       (`(olp ,outline-path)
        (let ((m (org-tree-find-olp outline-path)))
+         (setq args '(function (lambda ())))
          (set-buffer (marker-buffer m))
          (org-capture-put-target-region-and-position)
          (widen)
@@ -283,7 +282,7 @@ For more information on target location types, see `org-capture-templates'."
                 (loc (org-capture-get :insertion-point)))
            (with-current-buffer buf
              (goto-char loc)
-             (setq args `(file ,(let ((org-tree-info `(:subtree ,subtree))) (org-meta-return '(16))))))))
+             (setq args `(file ,(let ((org-tree-info `(:subtree ,subtree))) (org-meta-return '(16))))))))))
     (funcall func args)))
 
 (defun org-tree-meta-return (func &optional arg)
@@ -299,7 +298,7 @@ For more information on target location types, see `org-capture-templates'."
              (pd (plist-get info :project))
              (st (plist-get info :subtree))
              (subtree (org-tree-format
-                       (if (not st) org-tree-default-subtree-file-name
+                       (if (not st) (expand-file-name org-tree-default-subtree-file-name ad)
                          (if (equal st 'ask) (setq st (read-file-name "Subtree: " ad)) st)
                          (when (equal (car (org-tree-split-file-name st)) ad)
                            (setq st (cdr (org-tree-split-file-name st))))

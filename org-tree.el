@@ -33,6 +33,9 @@
 (defconst org-tree-path-separator "/"
   "The separator string with which to delineate path components.")
 
+(defconst org-tree-agenda-exclude-subtree-prop "AGENDA_EXCLUDE_SUBTREE"
+  "The property value used to define the subtree excluder.")
+
 (defun org-tree-testfn (o1 o2)
   (equal (car o1) o2))
 
@@ -165,11 +168,29 @@ All subtree files not explicitly excluded will be addded to
                                         (ignore-errors (file-exists-p subtree))))
                    (app (when subtree-exists (cons (list subtree (org-id-get)) spath)))
                    (rec (when subtree-exists (org-tree-lookup-table-1 path subtree in-progress
-                                              (or agenda-exclude-subtrees (org-entry-get-with-inheritance "AGENDA_EXCLUDE_SUBTREE"))))))
+                                              (or agenda-exclude-subtrees (org-entry-get-with-inheritance org-tree-agenda-exclude-subtree-prop))))))
               (if (and subtree-exists rec)
                   (append (list app) rec)
                 app)))))
       t 'file))))
+
+(defun org-tree-register-agenda-subtree (action &optional pom)
+  "Remove the given subtree file and its children from
+  `org-agenda-files', and prevent the subtree from being treated
+  as an agenda subtree again by setting `AGENDA_EXCLUDE_SUBTREE'.
+
+This does not parse the subtree for deeper exclusion."
+  (interactive)
+  (org-with-point-at pom
+    (let ((subtree (org-tree-resolve-subtree-file-name nil)))
+      (cond ((eq action 'deregister)
+             (when subtree (setq org-agenda-files (delete subtree org-agenda-files)))
+             (if (org-entry-get-multivalued-property nil org-tree-agenda-exclude-subtree-prop)
+                 (message "Agenda exclusion already set for this subtree")
+               (org-entry-put nil org-tree-agenda-exclude-subtree-prop "t")))
+            ((eq action 'register)
+             (when subtree (add-to-list 'org-agenda-files subtree))
+             (org-entry-delete nil org-tree-agenda-exclude-subtree-prop))))))
 
 (defun org-tree-lookup-table (&optional force)
   "Return the entry path table, calculating it if necessary. If FORCE,

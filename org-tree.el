@@ -350,8 +350,7 @@ For more information on target location types, see `org-capture-templates'."
     (save-excursion
       (beginning-of-line)
       (setq headline
-            (plist-get (cadr (org-element-headline-parser (point-at-eol)))
-                       :raw-value))
+            (plist-get (org-tree-headline-parser) :raw-value))
       (find-file subtree)
       (insert (org-tree-format
                (or (plist-get info :template)
@@ -391,7 +390,7 @@ ement in the perspective tree."
 (defun org-inject-subtree ()
   (save-excursion
     (org-back-to-heading)
-    (let* ((info (cadr (org-element-headline-parser (point-at-eol))))
+    (let* ((info (org-tree-headline-parser))
            (headline (plist-get info :raw-value))
            (subtree (org-tree-meta-return-internal
                      (list :headline headline)))
@@ -418,5 +417,9 @@ ement in the perspective tree."
       (kill-region end-metadata end-subtree)
       (with-current-buffer buf
         (save-buffer)))))
+(defun org-tree-headline-parser ()
+  (cadr (progn
+          (beginning-of-line)
+          (org-element-headline-parser (point-at-eol)))))
 
 (provide 'org-tree)

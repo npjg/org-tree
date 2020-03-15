@@ -63,14 +63,16 @@ subtree files, including the org extension.")
   "An alist mapping subtree file names to logical paths")
 
 (defsubst org-tree-safe-format (item spec)
-  "Applies `format-spec' to ITEM if it is a string; otherwise, return the argument as it is."
+  "Applies `format-spec' to ITEM if it is a string; otherwise,
+return the argument as it is."
   (if (and spec (stringp item)) (format-spec item spec) item))
 
 (defun org-tree-format-spec ()
   (apply #'format-spec-make (org-tree-format-spec-1 org-tree-format-spec)))
 
 (defun org-tree-format-spec-1 (spec &optional new-spec)
-  "Replace each symbol name in SPEC with its value in the current dynamic scope, or nil otherwise."
+  "Replace each symbol name in SPEC with its value in the current
+dynamic scope, or nil otherwise."
   (if spec (progn (setq new-spec
     (append new-spec (list (car spec) (ignore-errors (symbol-value (cadr spec))))))
                   (org-tree-format-spec-1 (cddr spec) new-spec))
@@ -124,11 +126,11 @@ With RELATIVE, do not start the path with an `org-tree-path-separator'."
 
 (defun org-tree-resolve-subtree-file-name (&optional pom)
   "Provide the full file name for the org-tree subtree at POM, or
-  return nil if a subtree does not exist there. This function
-  does not verify that the subtree is actually an org document;
-  it can be any sort of document you wish, which allows easy
-  overloading for other terminal points of your org project
-  tree (say, a LaTeX document).
+return nil if a subtree does not exist there. This function
+does not verify that the subtree is actually an org document;
+it can be any sort of document you wish, which allows easy
+overloading for other terminal points of your org project
+tree (say, a LaTeX document).
 
 An org-tree subtree is defined by the presence of an ID from
 `org-id-get', an attachment directory from `org-attach-dir', and
@@ -141,9 +143,11 @@ the SUBTREE property or, lacking that, by the format string
           (ad (org-attach-dir)))
       (if (equal subtree "") subtree
         (when (and id ad) (ignore-errors (file-truename
-             (expand-file-name (or subtree (org-tree-format org-tree-default-subtree-file-name)) ad))))))))
+         (expand-file-name (or subtree
+          (org-tree-format org-tree-default-subtree-file-name)) ad))))))))
 
-(defun org-tree-lookup-table-1 (path subtree &optional in-progress agenda-exclude-subtrees)
+(defun org-tree-lookup-table-1 (path subtree
+                                     &optional in-progress agenda-exclude-subtrees)
   "Recursively build the internal lookup alist with initial path PATH
 for the subtree file SUBTREE.
 
@@ -157,7 +161,8 @@ All subtree files not explicitly excluded will be addded to
       (lambda ()
         (let ((subtree (org-tree-resolve-subtree-file-name)))
           (when subtree
-            (let* ((path (if (or path (equal (file-truename (buffer-file-name)) (file-truename org-tree-root)))
+            (let* ((path (if (or path (equal (file-truename (buffer-file-name))
+                                             (file-truename org-tree-root)))
                          (append path (unless (org-before-first-heading-p)
                                         (ad-with-originals 'org-get-outline-path
                                           (org-get-outline-path t))))
@@ -167,8 +172,11 @@ All subtree files not explicitly excluded will be addded to
                                         (equal (file-name-extension subtree) "org")
                                         (ignore-errors (file-exists-p subtree))))
                    (app (when subtree-exists (cons (list subtree (org-id-get)) spath)))
-                   (rec (when subtree-exists (org-tree-lookup-table-1 path subtree in-progress
-                                              (or agenda-exclude-subtrees (org-entry-get-with-inheritance org-tree-agenda-exclude-subtree-prop))))))
+                   (rec (when subtree-exists
+                          (org-tree-lookup-table-1 path subtree in-progress
+                           (or agenda-exclude-subtrees
+                               (org-entry-get-with-inheritance
+                                org-tree-agenda-exclude-subtree-prop))))))
               (if (and subtree-exists rec)
                   (append (list app) rec)
                 app)))))
@@ -185,7 +193,8 @@ This does not parse the subtree for deeper exclusion."
     (let ((subtree (org-tree-resolve-subtree-file-name nil)))
       (cond ((eq action 'deregister)
              (when subtree (setq org-agenda-files (delete subtree org-agenda-files)))
-             (if (org-entry-get-multivalued-property nil org-tree-agenda-exclude-subtree-prop)
+             (if (org-entry-get-multivalued-property nil
+                   org-tree-agenda-exclude-subtree-prop)
                  (message "Agenda exclusion already set for this subtree")
                (org-entry-put nil org-tree-agenda-exclude-subtree-prop "t")))
             ((eq action 'register)
@@ -204,7 +213,8 @@ subtree file and chose `cdr' is the subtree's ID, and has as
   (unless org-tree-root (user-error "Tree index cannot be nil"))
   (unless (and org-tree-lookup-table (not force))
     (let (org-agenda-new-buffers org-mode-hook)
-      (setq org-tree-lookup-table (org-tree-flatten (org-tree-lookup-table-1 nil org-tree-root)))
+      (setq org-tree-lookup-table
+            (org-tree-flatten (org-tree-lookup-table-1 nil org-tree-root)))
       (org-release-buffers org-agenda-new-buffers)))
       org-tree-lookup-table)
 
@@ -215,18 +225,22 @@ it directly maks from `org-tree-lookup-table'. Note that the root
 path has an ID of nil, and its path is `org-tree-root'."
   (let ((path (org-tree-path-string path)))
     (cond ((equal path org-tree-root) "/")
-           (t (cdr (assoc path (org-tree-lookup-table) (lambda (o1 o2) (equal (car o1) o2))))))))
+          (t (cdr (assoc path (org-tree-lookup-table)
+                         (lambda (o1 o2) (equal (car o1) o2))))))))
 
 (defun org-tree-reverse-lookup (path &optional lax)
   "With logical subtree path PATH, return the entry of
 `org-tree-lookup-table' that defines the exact subtree. With LAX,
 return the highest subtree for which a match is found."
   (let ((rassoc (cl-rassoc (org-tree-path-string path) (org-tree-lookup-table)
-                           :test (lambda (a b) (funcall (if lax #'string-prefix-p #'equal) b a)))))
+                           :test (lambda (a b)
+                                   (funcall (if lax #'string-prefix-p #'equal) b a)))))
     (cond  (rassoc (list (car rassoc)
-                         (append (list (cdr rassoc))
-                                 (or (ignore-errors (substring (string-remove-prefix (cdr rassoc) path) 1)) ""))))
-           (t (list (list org-tree-root nil) (cons org-tree-path-separator (substring path 1)))))))
+            (append (list (cdr rassoc))
+                    (or (ignore-errors
+                     (substring (string-remove-prefix (cdr rassoc) path) 1)) ""))))
+           (t (list (list org-tree-root nil)
+                    (cons org-tree-path-separator (substring path 1)))))))
 
 (defun org-tree-find-olp (path)
   "Return a marker to the place where PATH is defined."
@@ -238,12 +252,13 @@ return the highest subtree for which a match is found."
 
 (defun org-tree-resolve-attachment-path (path attachment)
   "Return the full physical path to attachment ATTACHMENT of the
-  subtree at outline path PATH. A valid attachment directory,
-  returned by `org-attach-dir' is required to to properly expand
-  the file name Note that ATTACHMENT need not exist; it must just
-  be a file name."
+subtree at outline path PATH. A valid attachment directory,
+returned by `org-attach-dir' is required to to properly expand
+the file name Note that ATTACHMENT need not exist; it must just
+be a file name."
   (let* ((ad (org-with-point-at
-                 (org-id-find (or (cadar (org-tree-reverse-lookup (org-tree-path-string path)))
+                 (org-id-find (or (cadar (org-tree-reverse-lookup
+                                          (org-tree-path-string path)))
                                   (user-error "Subtree not found")) t)
                               (org-attach-dir))))
     (when ad (expand-file-name attachment ad))))
@@ -258,7 +273,8 @@ includes the current headline. See `org-get-outline-path' for
 documentation of USE-CACHE."
    (ad-with-originals 'org-get-outline-path
     (let ((res (append
-                (org-tree-path-list (or (org-tree-lookup (file-truename (buffer-file-name))) ""))
+                (org-tree-path-list (or (org-tree-lookup
+                                         (file-truename (buffer-file-name))) ""))
                 (org-get-outline-path with-self use-cache))))
       (if as-string (org-tree-path-string res) res))))
 
@@ -300,7 +316,8 @@ For more information on target location types, see `org-capture-templates'."
                 (loc (org-capture-get :insertion-point)))
            (with-current-buffer buf
              (goto-char loc)
-             (setq args `(file ,(let ((org-tree-info `(:subtree ,subtree))) (org-meta-return '(16))))))))))
+             (setq args `(file ,(let ((org-tree-info `(:subtree ,subtree)))
+                                  (org-meta-return '(16))))))))))
     (funcall func args)))
 
 (defun org-tree-meta-return (func &optional arg)
@@ -356,9 +373,11 @@ ement in the perspective tree."
         (org-tree-lookup-table)
         (advice-add 'org-get-outline-path :around #'org-tree-outline-path)
         (advice-add 'org-meta-return :around #'org-tree-meta-return)
-        (advice-add 'org-capture-set-target-location :around #'org-tree-capture-set-target-location))
+        (advice-add 'org-capture-set-target-location
+                    :around #'org-tree-capture-set-target-location))
     (advice-remove 'org-get-outline-path #'org-tree-outline-path)
     (advice-remove 'org-meta-return #'org-tree-meta-return)
-    (advice-remove 'org-capture-set-target-location #'org-tree-capture-set-target-location)))
+    (advice-remove 'org-capture-set-target-location
+                   #'org-tree-capture-set-target-location)))
 
 (provide 'org-tree)

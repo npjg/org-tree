@@ -36,8 +36,8 @@
 (defconst org-tree-agenda-exclude-subtree-prop "AGENDA_EXCLUDE_SUBTREE"
   "The property value used to define the subtree excluder.")
 
-(defun org-tree-testfn (o1 o2)
-  (equal (car o1) o2))
+(defvar org-tree-loose-text-post "\n\n"
+  "The text inserted after loose text is injected into a subtree file.")
 
 (defconst org-tree-format-spec '(?i id ?h headline)
   "An alist of the special formatting options available to
@@ -82,6 +82,12 @@ dynamic scope, or nil otherwise."
   "Format ITEM according to `org-tree-format-spec', substituting
   in dynamically bound variables."
   (when (stringp item) (format-spec item (org-tree-format-spec))))
+
+(defun org-tree-trim-string (string)
+  "Remove white spaces in beginning and ending of STRING.
+White space here is any of: space, tab, emacs newline (line feed, ASCII 10)."
+  (replace-regexp-in-string "\\`[ \t\n]*" ""
+                            (replace-regexp-in-string "[ \t\n]*\\'" "" string)))
 
 (defun org-tree-split-file-name (file &optional always-parse-as-file)
   "Take a file name FILE, and returns a list whose `car' is a
@@ -382,5 +388,36 @@ ement in the perspective tree."
     (advice-remove 'org-meta-return #'org-tree-meta-return)
     (advice-remove 'org-capture-set-target-location
                    #'org-tree-capture-set-target-location)))
+
+(defun org-inject-subtree ()
+  (save-excursion
+    (org-back-to-heading)
+    (let* ((info (cadr (org-element-headline-parser (point-at-eol))))
+           (headline (plist-get info :raw-value))
+           (subtree (org-tree-meta-return-internal
+                     (list :headline headline)))
+           (end-metadata (save-excursion (org-end-of-meta-data) (point)))
+           (first-child (save-excursion (when (org-goto-first-child) (point))))
+           (end-subtree (save-excursion (org-end-of-subtree (point))))
+           (buf (or (find-buffer-visiting subtree) (find-file-noselect subtree)))
+           (org-refile-keep t))
+      ;; first move loose text to the top (if we have any)
+      (unless (= 0 (length (org-tree-trim-string
+                     (buffer-substring end-metadata
+                      (or first-child end-subtree)))))
+        (kill-ring-save end-metadata (or first-child end-subtree))
+        (with-current-buffer buf
+          ;; jump before first headline
+          (yank)
+          (insert "\n\n")))
+      ;; then move the subtrees
+      (when first-child
+        (goto-char first-child)
+        (set-mark-command nil)
+        (org-end-of-subtree)
+        (org-refile nil nil (list headline subtree)))
+      (kill-region end-metadata end-subtree)
+      (with-current-buffer buf
+        (save-buffer)))))
 
 (provide 'org-tree)

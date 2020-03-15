@@ -320,47 +320,50 @@ For more information on target location types, see `org-capture-templates'."
                                   (org-meta-return '(16))))))))))
     (funcall func args)))
 
+(defun org-tree-meta-return-internal (&optional info)
+  (let* ((headline (plist-get info :headline))
+         (id (org-id-get-create))
+         (ad (file-name-as-directory
+              (progn (and (plist-get info :attach-dir)
+                          (org-entry-put nil "ATTACH_DIR"
+                                         (plist-get info :attach-dir)))
+                     (org-attach-dir t))))
+         (pd (plist-get info :project))
+         (st (plist-get info :subtree))
+         (subtree (org-tree-format
+                   (if (not st)
+                       (expand-file-name org-tree-default-subtree-file-name ad)
+                     (if (equal st 'ask)
+                         (setq st (read-file-name "Subtree: " ad)) st)
+                     (when (equal (car (org-tree-split-file-name st)) ad)
+                       (setq st (cdr (org-tree-split-file-name st))))
+                     (unless (file-directory-p st)
+                       (org-entry-put nil "SUBTREE" st))
+                     (if (file-name-absolute-p st) st (expand-file-name st ad))))))
+  (unless (file-exists-p subtree)
+    (save-excursion
+      (beginning-of-line)
+      (setq headline
+            (plist-get (cadr (org-element-headline-parser (point-at-eol)))
+                       :raw-value))
+      (find-file subtree)
+      (insert (org-tree-format
+               (or (plist-get info :template)
+                   org-tree-default-subtree-template)))
+      (save-buffer)
+      ;;(kill-buffer)
+      ))
+  subtree))
+
 (defun org-tree-meta-return (func &optional arg)
   "Insert a hew org-tree subtree. Calls `org-meta-return.'"
+  (funcall func arg)
   (if (equal arg '(16))
-      (let* ((info (when (boundp 'org-tree-info) org-tree-info))
-             (headline (or (plist-get info :headline) (read-string "Headline: ")))
-             (res (progn (funcall func arg) (insert headline)))
-             (id (org-id-get-create))
-             (ad (file-name-as-directory (progn (and (plist-get info :attach-dir)
-                          (org-entry-put nil "ATTACH_DIR" (plist-get info :attach-dir)))
-                      (org-attach-dir t))))
-             (pd (plist-get info :project))
-             (st (plist-get info :subtree))
-             (subtree (org-tree-format
-                       (if (not st) (expand-file-name org-tree-default-subtree-file-name ad)
-                         (if (equal st 'ask) (setq st (read-file-name "Subtree: " ad)) st)
-                         (when (equal (car (org-tree-split-file-name st)) ad)
-                           (setq st (cdr (org-tree-split-file-name st))))
-                         (unless (file-directory-p st) (org-entry-put nil "SUBTREE" st))
-                         (if (file-name-absolute-p st) st (expand-file-name st ad))))))
-        (unless (file-exists-p subtree) (save-excursion
-          (beginning-of-line)
-          (setq headline (plist-get (cadr (org-element-headline-parser (point-at-eol))) :raw-value))
-          (find-file subtree)
-          (insert (org-tree-format (or (plist-get info :template) org-tree-default-subtree-template)))
-          (save-buffer)
-          (kill-buffer)))
-        subtree)
-    (funcall func arg)))
-
-;; (defmacro tracked-let (varlist &rest body) `(let ,inputs ,(cons ,@body return
-;;   the values from all the bound variables as an alist: We need to loop over
-;; ;;   all the symbols somehow.
-;; (defmacro tracked-let (varlist &rest body)
-;;   "Bind variables according to VARLIST and tnen eval BODY. Set
-;; global `tracked-let' to the terminal values of all variables
-;; bound in VARLIST."
-;;   `(let* ((,@varlist
-;;           (b ,@body)))
-;;      (setq test (mapcar (lambda (v) (symbol-value (car v))) (quote ,varlist)))
-;;      b
-;;      ))
+      (let ((info (when (boundp 'org-tree-info) org-tree-info))
+            (headline (or (plist-get info :headline) (read-string "Headline: "))))
+        (insert headline)
+        (plist-put info :headline headline)
+        (org-tree-meta-return-internal info))))
 
 (define-minor-mode org-tree-mode
   "Logically combine many Orgdocuments into one. This minor mode

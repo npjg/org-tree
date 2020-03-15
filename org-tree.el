@@ -388,6 +388,21 @@ ement in the perspective tree."
                    #'org-tree-capture-set-target-location)))
 
 (defun org-inject-subtree ()
+(defun org-tree-resolve-subtree-project-directory ()
+  "Return the full path of a subtree's project directory."
+  (let ((project (org-entry-get nil "PROJECT")))
+    (if (file-name-absolute-p project)
+        project
+      (expand-file-name project (org-attach-dir)))))
+
+(defun org-tree-encode-subtree-project-directory (project)
+  "Truncate the project directory path if it lives inside the
+subtree's attachment directory."
+  (org-entry-put nil "PROJECT"
+  (if (string-prefix-p (file-name-as-directory (org-attach-dir)) project)
+      (file-name-nondirectory project)
+    project)))
+
   (save-excursion
     (org-back-to-heading)
     (let* ((info (org-tree-headline-parser))

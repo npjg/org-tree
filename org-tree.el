@@ -387,7 +387,6 @@ ement in the perspective tree."
     (advice-remove 'org-capture-set-target-location
                    #'org-tree-capture-set-target-location)))
 
-(defun org-inject-subtree ()
 (defun org-tree-resolve-subtree-project-directory ()
   "Return the full path of a subtree's project directory."
   (let ((project (org-entry-get nil "PROJECT")))
@@ -403,6 +402,9 @@ subtree's attachment directory."
       (file-name-nondirectory project)
     project)))
 
+(defun org-tree-inject-subtree ()
+  "Move the contents of the physical subtree at point to the
+org-tree subtree, creating one if necessary."
   (save-excursion
     (org-back-to-heading)
     (let* ((info (org-tree-headline-parser))
@@ -429,9 +431,8 @@ subtree's attachment directory."
         (set-mark-command nil)
         (org-end-of-subtree)
         (org-refile nil nil (list headline subtree)))
-      (kill-region end-metadata end-subtree)
-      (with-current-buffer buf
-        (save-buffer)))))
+      (kill-region end-metadata end-subtree))))
+
 (defun org-tree-headline-parser ()
   (cadr (progn
           (beginning-of-line)

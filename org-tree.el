@@ -135,8 +135,13 @@ already a list, return it as it is."
 a path separator. If PATH is already a string, return it as it is.
 
 With RELATIVE, do not start the path with an `org-tree-path-separator'."
-  (if (stringp path) path
-    (mapconcat 'identity (append (unless relative (list "")) path) org-tree-path-separator)))
+  (if (stringp path)
+      (concat
+       (when (not (equal (substring path 0 1)
+                         org-tree-path-separator))
+         org-tree-path-separator) path)
+    (mapconcat 'identity (append (unless relative (list "")) path)
+               org-tree-path-separator)))
 
 (defun org-tree-resolve-subtree-file-name (&optional pom)
   "Provide the full file name for the org-tree subtree at POM, or

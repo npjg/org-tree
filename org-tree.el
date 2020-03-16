@@ -36,6 +36,9 @@
 (defconst org-tree-agenda-exclude-subtree-prop "AGENDA_EXCLUDE_SUBTREE"
   "The property value used to define the subtree excluder.")
 
+(defconst org-keyword-prop-regexp "^[ \t]*#\\+[A-Z_]+:\\(\\s-*\\)\\S-+"
+  "Again, it doesn't seem that org-mode supports these properties very well.")
+
 (defvar org-tree-loose-text-post "\n\n"
   "The text inserted after loose text is injected into a subtree file.")
 
@@ -142,6 +145,19 @@ With RELATIVE, do not start the path with an `org-tree-path-separator'."
          org-tree-path-separator) path)
     (mapconcat 'identity (append (unless relative (list "")) path)
                org-tree-path-separator)))
+
+(defun org-tree-jump-before-first-heading (&optional before)
+  "Position point one character before the first heading. With
+BEFORE, position point one character after the last keyword
+property line that occurs before the first heading."
+   (goto-char (point-min))
+   (re-search-forward org-complex-heading-regexp nil t)
+   (beginning-of-line)
+   (goto-char (1- (point)))
+   (when before
+     (re-search-backward org-keyword-prop-regexp nil t)
+     (end-of-line)
+     (goto-char (1+ (point)))))
 
 (defun org-tree-resolve-subtree-file-name (&optional pom)
   "Provide the full file name for the org-tree subtree at POM, or

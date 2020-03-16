@@ -236,10 +236,14 @@ This does not parse the subtree for deeper exclusion."
              (when subtree (add-to-list 'org-agenda-files subtree))
              (org-entry-delete nil org-tree-agenda-exclude-subtree-prop))))))
 
-(defun org-tree-lookup-table (&optional force)
+(defun org-tree-lookup-table (&optional reverse force)
   "Return the entry path table, calculating it if necessary. If FORCE,
 recalculate both tables anew before returning the requested
 table.
+
+With REVERSE, return a flipped version of the table. This ensures
+deepest subtrees appear above their parents, so
+`org-tree-reverse-lookup' functions properly.
 
 The lookup table is stored as an alist, where each association
 has `car' as a list whose `car' is the physical path to the
@@ -250,8 +254,10 @@ subtree file and chose `cdr' is the subtree's ID, and has as
     (let (org-agenda-new-buffers org-mode-hook)
       (setq org-tree-lookup-table
             (org-tree-flatten (org-tree-lookup-table-1 nil org-tree-root)))
+      (setq org-tree-reversed-lookup-table
+            (reverse org-tree-lookup-table))
       (org-release-buffers org-agenda-new-buffers)))
-      org-tree-lookup-table)
+      (if reverse org-tree-reversed-lookup-table org-tree-lookup-table))
 
 (defun org-tree-lookup (path)
   "Get the outline path corresponding to the subtree at path
@@ -267,7 +273,8 @@ path has an ID of nil, and its path is `org-tree-root'."
   "With logical subtree path PATH, return the entry of
 `org-tree-lookup-table' that defines the exact subtree. With LAX,
 return the highest subtree for which a match is found."
-  (let ((rassoc (cl-rassoc (org-tree-path-string path) (org-tree-lookup-table)
+  (let* ((path (org-tree-path-string path))
+         (rassoc (cl-rassoc path (org-tree-lookup-table :reverse)
                            :test (lambda (a b)
                                    (funcall (if lax #'string-prefix-p #'equal) b a)))))
     (cond  (rassoc (list (car rassoc)

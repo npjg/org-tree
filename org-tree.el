@@ -39,6 +39,11 @@
 (defvar org-tree-loose-text-post "\n\n"
   "The text inserted after loose text is injected into a subtree file.")
 
+(defvar org-tree-refile-max-level 9
+  "The total subtree outline level considered in generating refile targets.
+
+Note that this restriction is supersed by the per-file maxlevel set in `org-refile-targets'.")
+
 (defconst org-tree-format-spec '(?i id ?h headline)
   "An alist of the special formatting options available to
   org-tree subtree file names. Using
@@ -114,6 +119,9 @@ file name before parsing it.  View this function as the inverse of
    ((atom list) (list list))
    ((not (true-listp list)) (list list))
    (t (append (org-tree-flatten (car list)) (org-tree-flatten (cdr list))))))
+
+(defun org-tree-outline-level (&optional offset)
+  (+ (org-outline-level) (- (length (org-get-outline-path)) (or offset 0))))
 
 (defun org-tree-path-list (path)
   "If PATH is not already a path list, convert it to a list by

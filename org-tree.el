@@ -293,8 +293,14 @@ Note that if PATH does not define an org-tree subtree, only the
 `car' will be given, as the two paths are equal."
   (let* ((info (org-tree-reverse-lookup path :lax))
          (path (org-tree-path-list (cdadr info))))
-    (cond ;; no subtree here
-          (path (cons (org-find-olp (append (list (caar info)) path)) nil))
+    (cond ;; physical headline under logical subtree no subtree here: check to
+          ;; make sure it's not actually in the physical location
+     (path (cons (or (ignore-errors (org-find-olp (append (list (caar info)) path)))
+                     (org-with-point-at (org-id-find (cadar info) :marker)
+                       (org-find-olp (append
+                           (funcall (ad-get-orig-definition #'org-get-outline-path) t)
+                           path) :this-buffer)))
+                        nil))
           ;; subtree here
           (t (unless (cadar info) (user-error "Subtree ID expected but not found"))
              (cons (org-id-find (cadar info) :markerp)

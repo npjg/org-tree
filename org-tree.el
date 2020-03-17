@@ -285,12 +285,22 @@ return the highest subtree for which a match is found."
                     (cons org-tree-path-separator (substring path 1)))))))
 
 (defun org-tree-find-olp (path)
-  "Return a marker to the place where PATH is defined."
+  "Return a cons cell whose `car' is a marker to the physical
+location of PATH and whose `cdr' is a marker to the logical
+location of PATH.
+
+Note that if PATH does not define an org-tree subtree, only the
+`car' will be given, as the two paths are equal."
   (let* ((info (org-tree-reverse-lookup path :lax))
-        (path (org-tree-path-list (cdadr info))))
-    (cond ((and (equal (cdadr info) "") path) (org-id-find (cadar info) t))
-          (path (org-find-olp (append (list (caar info)) path)))
-          (t (set-marker (make-marker) 0 (org-get-agenda-file-buffer (caar info)))))))
+         (path (org-tree-path-list (cdadr info))))
+    (cond ;; no subtree here
+          (path (cons (org-find-olp (append (list (caar info)) path)) nil))
+          ;; subtree here
+          (t (unless (cadar info) (user-error "Subtree ID expected but not found"))
+             (cons (org-id-find (cadar info) :markerp)
+                   (with-current-buffer (org-get-agenda-file-buffer (caar info))
+             (org-tree-jump-before-first-heading :before)
+             (set-marker (make-marker) (point))))))))
 
 (defun org-tree-resolve-attachment-path (path attachment)
   "Return the full physical path to attachment ATTACHMENT of the
@@ -338,7 +348,7 @@ For more information on target location types, see `org-capture-templates'."
   (let ((args (org-capture-get :target)))
     (pcase (or target args)
       (`(olp ,outline-path)
-       (let ((m (org-tree-find-olp outline-path)))
+       (let ((m (cdr (org-tree-find-olp outline-path))))
          (setq args '(function (lambda ())))
          (set-buffer (marker-buffer m))
          (org-capture-put-target-region-and-position)
@@ -475,8 +485,7 @@ default, by the subtree headline."
 (defun org-tree-synchronize-headline-title ()
   "Set the subtree file's TITLE property to the physical headline
 of the subtree."
-  (let ((headline-logical)
-        (org-agenda-new-buffers)
+  (let ((org-agenda-new-buffers)
         (headline-physical (plist-get (org-tree-headline-parser) :raw-value)))
   (with-current-buffer
       (org-get-agenda-file-buffer (org-tree-resolve-subtree-file-name))

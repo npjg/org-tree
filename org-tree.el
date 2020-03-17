@@ -528,4 +528,34 @@ org-tree subtree, creating one if necessary."
           (beginning-of-line)
           (org-element-headline-parser (point-at-eol)))))
 
+(defun org-tree-refile (func &rest args)
+  (let ((heading-func (symbol-function 'org-back-to-heading))
+        (subtree-func (symbol-function 'org-end-of-subtree)))
+    (cl-letf (((symbol-function 'org-back-to-heading)
+               (lambda (&optional invisible-ok)
+                 (ignore-errors (funcall heading-func invisible-ok))))
+             ((symbol-function 'org-end-of-subtree)
+              (lambda (&optional invisible-ok to-heading)
+                (ignore-errors (funcall subtree-func invisible-ok to-heading)))))
+      (apply func args))))
+
+(defun org-tree-refile-get-targets (func &rest args)
+  (let ((org-refile-targets (list (cons nil (cons :maxlevel 3)))))
+    (seq-partition (org-tree-flatten
+                    (apply #'org-tree-refile-get-targets-1 func args)) 4)))
+
+(defun org-tree-refile-get-targets-1 (func &rest args)
+    (mapcar (lambda (elt)
+              (let* ((olps (org-tree-find-olp (car elt)))
+                     (subtree (org-with-point-at (car olps)
+                                (org-tree-resolve-subtree-file-name))))
+        (when subtree
+          ;; adjust the pointer here
+          (setf (cadr elt) subtree
+                (cddr elt) (list ".*" (marker-position (cdr olps))))
+          ;; inject the children here
+          (setq elt (append elt (org-refile-get-targets
+                             (org-get-agenda-file-buffer subtree)))))))
+            (apply func args)))
+
 (provide 'org-tree)

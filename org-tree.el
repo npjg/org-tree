@@ -432,11 +432,16 @@ ement in the perspective tree."
         (advice-add 'org-get-outline-path :around #'org-tree-outline-path)
         (advice-add 'org-meta-return :around #'org-tree-meta-return)
         (advice-add 'org-capture-set-target-location
-                    :around #'org-tree-capture-set-target-location))
+                    :around #'org-tree-capture-set-target-location)
+        (advice-add 'org-refile-get-targets
+                    :around #'org-tree-refile-get-targets)
+        (advice-add 'org-refile :around #'org-tree-refile))
     (advice-remove 'org-get-outline-path #'org-tree-outline-path)
     (advice-remove 'org-meta-return #'org-tree-meta-return)
     (advice-remove 'org-capture-set-target-location
-                   #'org-tree-capture-set-target-location)))
+                   #'org-tree-capture-set-target-location)
+    (advice-remove 'org-refile-get-targets #'org-tree-refile-get-targets)
+    (advice-remove 'org-refile #'org-tree-refile)))
 
 (defun org-tree-resolve-subtree-project-directory ()
   "Return the full path of a subtree's project directory."
@@ -561,7 +566,8 @@ org-tree subtree, creating one if necessary."
                 (cddr elt) (list ".*" (marker-position (cdr olps))))
           ;; inject the children here
           (setq elt (append elt (org-refile-get-targets
-                             (org-get-agenda-file-buffer subtree)))))))
+                                 (org-get-agenda-file-buffer subtree))))))
+              elt)
             (apply func args)))
 
 (provide 'org-tree)

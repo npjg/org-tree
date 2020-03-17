@@ -286,7 +286,7 @@ return the highest subtree for which a match is found."
 
 (defun org-tree-find-olp (path)
   "Return a marker to the place where PATH is defined."
-  (let* ((info (org-tree-reverse-lookup (org-tree-path-string path) :lax))
+  (let* ((info (org-tree-reverse-lookup path :lax))
         (path (org-tree-path-list (cdadr info))))
     (cond ((and (equal (cdadr info) "") path) (org-id-find (cadar info) t))
           (path (org-find-olp (append (list (caar info)) path)))
@@ -299,8 +299,7 @@ returned by `org-attach-dir' is required to to properly expand
 the file name Note that ATTACHMENT need not exist; it must just
 be a file name."
   (let* ((ad (org-with-point-at
-                 (org-id-find (or (cadar (org-tree-reverse-lookup
-                                          (org-tree-path-string path)))
+                 (org-id-find (or (cadar (org-tree-reverse-lookup path))
                                   (user-error "Subtree not found")) t)
                               (org-attach-dir))))
     (when ad (expand-file-name attachment ad))))

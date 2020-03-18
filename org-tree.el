@@ -151,7 +151,7 @@ With RELATIVE, do not start the path with an `org-tree-path-separator'."
 BEFORE, position point one character after the last keyword
 property line that occurs before the first heading."
    (goto-char (point-min))
-   (re-search-forward org-complex-heading-regexp nil t)
+   (re-search-forward org-complex-heading-regexp nil :noerror)
    (beginning-of-line)
    (goto-char (1- (point)))
    (when before

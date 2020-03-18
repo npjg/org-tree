@@ -570,4 +570,23 @@ org-tree subtree, creating one if necessary."
               elt)
             (apply func args)))
 
+(defun org-tree-up-heading ()
+  (unless (org-up-heading-safe)
+    ;; get the parent location
+    (let* ((info (org-tree-reverse-lookup (org-get-outline-path) :lax))
+           (place (and (or (cadar info)
+                           (user-error "Subtree ID expected but not found"))
+                       (org-id-find (cadar info) :marker))))
+      (switch-to-buffer (marker-buffer place))
+      (goto-char place))))
+
+(defun org-tree-goto-first-child ()
+  (let ((subtree (org-tree-resolve-subtree-file-name)))
+    (if subtree
+        (progn
+          (find-file subtree)
+          (goto-char (point-min))
+          (re-search-forward org-complex-heading-regexp nil :noerror))
+      (org-goto-first-child))))
+
 (provide 'org-tree)

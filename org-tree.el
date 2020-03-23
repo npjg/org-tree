@@ -146,18 +146,17 @@ With RELATIVE, do not start the path with an `org-tree-path-separator'."
     (mapconcat 'identity (append (unless relative (list "")) path)
                org-tree-path-separator)))
 
-(defun org-tree-jump-before-first-heading (&optional before)
-  "Position point one character before the first heading. With
-BEFORE, position point one character after the last keyword
-property line that occurs before the first heading."
-   (goto-char (point-min))
-   (re-search-forward org-complex-heading-regexp nil :noerror)
-   (beginning-of-line)
-   (goto-char (1- (point)))
-   (when before
-     (re-search-backward org-keyword-prop-regexp nil t)
-     (end-of-line)
-     (goto-char (1+ (point)))))
+(defun org-tree-end-of-meta-data (func &rest args)
+  "Apply `org-end-of-meta-data' unless we are before the first
+headline, then jump immediately after the file-wide metadata,
+which includes keyword arguments and such."
+  (condition-case nil (apply func args)
+    ;; if we get an error expect that we are before the first headline
+    (error
+     (re-search-forward org-complex-heading-regexp nil :noerror)
+     (beginning-of-line)
+     (goto-char (1- (point)))
+     nil)))
 
 (defun org-tree-resolve-subtree-file-name (&optional pom)
   "Provide the full file name for the org-tree subtree at POM, or
@@ -305,7 +304,8 @@ Note that if PATH does not define an org-tree subtree, only the
           (t (unless (cadar info) (user-error "Subtree ID expected but not found"))
              (cons (org-id-find (cadar info) :markerp)
                    (with-current-buffer (org-get-agenda-file-buffer (caar info))
-             (org-tree-jump-before-first-heading :before)
+                     (goto-char (point-min))
+                     (org-end-of-meta-data)
              (set-marker (make-marker) (point))))))))
 
 (defun org-tree-resolve-attachment-path (path attachment)
@@ -435,12 +435,14 @@ ement in the perspective tree."
                     :around #'org-tree-capture-set-target-location)
         (advice-add 'org-refile-get-targets
                     :around #'org-tree-refile-get-targets)
+        (advice-add 'org-end-of-meta-data :around #'org-tree-end-of-meta-data)
         (advice-add 'org-refile :around #'org-tree-refile))
     (advice-remove 'org-get-outline-path #'org-tree-outline-path)
     (advice-remove 'org-meta-return #'org-tree-meta-return)
     (advice-remove 'org-capture-set-target-location
                    #'org-tree-capture-set-target-location)
     (advice-remove 'org-refile-get-targets #'org-tree-refile-get-targets)
+    (advice-remove 'org-end-of-meta-data #'org-tree-end-of-meta-data)
     (advice-remove 'org-refile #'org-tree-refile)))
 
 (defun org-tree-resolve-subtree-project-directory ()

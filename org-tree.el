@@ -475,7 +475,7 @@ property is set to the name of the local directory chosen in
     (unless headline (insert (file-name-nondirectory (car args))))
     (apply #'magit-clone-internal args)
     (org-tree-encode-subtree-project-directory
-     (file-name-nondirectory (cadr agrs)))))
+     (file-name-nondirectory (cadr args)))))
 
 (defun org-tree-magit-init ()
   "Create a new subtree and initialize a repository in its

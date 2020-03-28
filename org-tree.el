@@ -131,20 +131,18 @@ file name before parsing it.  View this function as the inverse of
 splitting PATH as a string at each `org-tree-path-separator'. If PATH is
 already a list, return it as it is."
   (if (listp path) path
-    (split-string path (format "[%s]+" org-tree-path-separator) t)))
+    (split-string-and-unquote path org-tree-path-separator)))
 
 (defun org-tree-path-string (path &optional relative)
   "Concatenate the given PATH list into a string, beginning with
 a path separator. If PATH is already a string, return it as it is.
 
 With RELATIVE, do not start the path with an `org-tree-path-separator'."
-  (if (stringp path)
-      (concat
-       (when (not (equal (substring path 0 1)
-                         org-tree-path-separator))
-         org-tree-path-separator) path)
-    (mapconcat 'identity (append (unless relative (list "")) path)
-               org-tree-path-separator)))
+  (unless (stringp path)
+    (setq path (combine-and-quote-strings path org-tree-path-separator)))
+(concat (unless (equal (substring path 0 1) org-tree-path-separator)
+	  org-tree-path-separator)
+	path))
 
 (defun org-tree-end-of-meta-data (func &rest args)
   "Apply `org-end-of-meta-data' unless we are before the first
@@ -272,16 +270,17 @@ path has an ID of nil, and its path is `org-tree-root'."
   "With logical subtree path PATH, return the entry of
 `org-tree-lookup-table' that defines the exact subtree. With LAX,
 return the highest subtree for which a match is found."
-  (let* ((path (org-tree-path-string path))
-         (rassoc (cl-rassoc path (org-tree-lookup-table :reverse)
-                           :test (lambda (a b)
-                                   (funcall (if lax #'string-prefix-p #'equal) b a)))))
-    (cond  (rassoc (list (car rassoc)
-            (append (list (cdr rassoc))
-                    (or (ignore-errors
-                     (substring (string-remove-prefix (cdr rassoc) path) 1)) ""))))
-           (t (list (list org-tree-root nil)
-                    (cons org-tree-path-separator (substring path 1)))))))
+  (when path
+    (let* ((path (org-tree-path-string path))
+           (rassoc (cl-rassoc path (org-tree-lookup-table :reverse)
+                    :test (lambda (a b)
+                            (funcall (if lax #'string-prefix-p #'equal) b a)))))
+      (cond  (rassoc (list (car rassoc)
+                           (append (list (cdr rassoc))
+                            (or (ignore-errors
+                                  (substring (string-remove-prefix (cdr rassoc) path) 1)) ""))))
+             (t (list (list org-tree-root nil)
+                      (cons org-tree-path-separator (substring path 1))))))))
 
 (defun org-tree-find-olp (path)
   "Return a cons cell whose `car' is a marker to the physical
@@ -295,7 +294,9 @@ Note that if PATH does not define an org-tree subtree, only the
     (cond ;; physical headline under logical subtree no subtree here: check to
           ;; make sure it's not actually in the physical location
      (path (cons (or (ignore-errors (org-find-olp (append (list (caar info)) path)))
-                     (org-with-point-at (org-id-find (cadar info) :marker)
+                     (org-with-point-at
+                         (unless (or (cadar info) (org-id-find (cadar info) :marker))
+                           (user-error "Subtree ID expected but not found"))
                        (org-find-olp (append
                            (funcall (ad-get-orig-definition #'org-get-outline-path) t)
                            path) :this-buffer)))

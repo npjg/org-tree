@@ -521,36 +521,22 @@ of the subtree."
     (org-global-prop-set "TITLE" headline-physical))
   (org-release-buffers org-agenda-new-buffers)))
 
-(defun org-tree-inject-subtree ()
+(defun org-tree-inject-subtree (&optional no-kill)
   "Move the contents of the physical subtree at point to the
-org-tree subtree, creating one if necessary."
+logical subtree, creating one if necessary. With NO-KILL, do not
+remove the text from the physical subtree; just copy it."
   (save-excursion
     (org-back-to-heading)
-    (let* ((info (org-tree-headline-parser))
-           (headline (plist-get info :raw-value))
-           (subtree (org-tree-meta-return-internal
-                     (list :headline headline)))
-           (end-metadata (save-excursion (org-end-of-meta-data) (point)))
-           (first-child (save-excursion (when (org-goto-first-child) (point))))
-           (end-subtree (save-excursion (org-end-of-subtree (point))))
-           (buf (or (find-buffer-visiting subtree) (find-file-noselect subtree)))
-           (org-refile-keep t))
-      ;; first move loose text to the top (if we have any)
-      (unless (= 0 (length (org-tree-trim-string
-                     (buffer-substring end-metadata
-                      (or first-child end-subtree)))))
-        (kill-ring-save end-metadata (or first-child end-subtree))
-        (with-current-buffer buf
-          ;; jump before first headline
-          (yank)
-          (insert "\n\n")))
-      ;; then move the subtrees
-      (when first-child
-        (goto-char first-child)
-        (set-mark-command nil)
-        (org-end-of-subtree)
-        (org-refile nil nil (list headline subtree)))
-      (kill-region end-metadata end-subtree))))
+    (let* ((subtree
+            (or (org-tree-resolve-subtree-file-name)
+                (org-tree-meta-return-internal
+                 (list :headline (plist-get (org-tree-headline-parser):raw-value))))))
+      (funcall (if no-kill #'kill-ring-save #'kill-region)
+               (progn (org-end-of-meta-data) (point))
+               (progn (org-end-of-subtree) (point)))
+      (with-current-buffer (org-get-agenda-file-buffer subtree)
+        (goto-char (point-max))
+        (org-tree-paste-subtree #'org-paste-subtree)))))
 
 (defun org-tree-extract-subtree (&optional kill)
   "Move the contents of the logical subtree at point to the
@@ -561,6 +547,7 @@ subtree; otherwise, just copy them."
     (let* ((subtree (or (org-tree-resolve-subtree-file-name)
                         (user-error "No logical subtree to extract"))))
       (with-current-buffer (org-get-agenda-file-buffer subtree)
+        (goto-char (point-min))
         (funcall (if kill #'kill-region #'kill-ring-save)
                (progn (org-end-of-meta-data) (point))
                (point-max)))

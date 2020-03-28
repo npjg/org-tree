@@ -147,14 +147,29 @@ With RELATIVE, do not start the path with an `org-tree-path-separator'."
 (defun org-tree-end-of-meta-data (func &rest args)
   "Apply `org-end-of-meta-data' unless we are before the first
 headline, then jump immediately after the file-wide metadata,
-which includes keyword arguments and such."
+which includes keyword arguments and such.
+
+In this alternate behavior, when argument FULL is non-nil, also
+skip any text before the first headline."
   (condition-case nil (apply func args)
     ;; if we get an error expect that we are before the first headline
     (error
-     (re-search-forward org-complex-heading-regexp nil :noerror)
-     (beginning-of-line)
-     (goto-char (1- (point)))
+     (if (car args)
+         (progn (re-search-forward org-complex-heading-regexp nil :noerror)
+                (beginning-of-line)
+                (goto-char (1- (point))))
+       (goto-char (point-max))
+       (re-search-backward org-keyword-prop-regexp nil :noerror)
+       (end-of-line)
+       (goto-char (1+ (point))))
      nil)))
+
+(defun org-tree-first-heading-in-file ()
+  "Goto the first heading in the current org file."
+  (let ((p (point)))
+    (goto-char (point-min))
+    (unless (re-search-forward org-complex-heading-regexp nil :noerror)
+      (goto-char p) nil)))
 
 (defun org-tree-resolve-subtree-file-name (&optional pom)
   "Provide the full file name for the org-tree subtree at POM, or

@@ -552,6 +552,25 @@ org-tree subtree, creating one if necessary."
         (org-refile nil nil (list headline subtree)))
       (kill-region end-metadata end-subtree))))
 
+(defun org-tree-extract-subtree (&optional kill)
+  "Move the contents of the logical subtree at point to the
+physical subtree. With KILL, kill the contents of the logical
+subtree; otherwise, just copy them."
+  (save-excursion
+    (org-back-to-heading)
+    (let* ((subtree (or (org-tree-resolve-subtree-file-name)
+                        (user-error "No logical subtree to extract"))))
+      (with-current-buffer (org-get-agenda-file-buffer subtree)
+        (funcall (if kill #'kill-region #'kill-ring-save)
+               (progn (org-end-of-meta-data) (point))
+               (point-max)))
+      (org-end-of-meta-data)
+      (org-tree-paste-subtree #'org-paste-subtree (1+ (org-current-level))))))
+
+(defun org-tree-paste-subtree (func &rest args)
+  (flet ((org-kill-is-subtree-p (&optional txt) t))
+    (apply func args)))
+
 (defun org-tree-headline-parser ()
   (cadr (progn
           (beginning-of-line)

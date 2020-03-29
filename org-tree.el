@@ -578,23 +578,26 @@ subtree; otherwise, just copy them."
 
 (defun org-tree-refile-get-targets-1 (func &rest args)
   (mapcar (lambda (elt)
-            (let* ((olps (org-tree-find-olp (org-tree-path-string
-                          (with-current-buffer (org-get-agenda-file-buffer (cadr elt))
-                                                 (goto-char (car (last elt)))
-                                                 (org-get-outline-path t)))))
-                   ;; must work around nasty quoting bug
-                   (subtree (org-with-point-at (car olps)
-                              (org-tree-resolve-subtree-file-name))))
-              (when subtree
-                ;; adjust the pointer here
-                (setf (cadr elt) subtree
-                      (cddr elt)
-                      (list ".*" (marker-position (or (cdr olps) (car olps)))))
-                ;; inject the children here
-                (setq elt (append elt (org-refile-get-targets
-                                       (org-get-agenda-file-buffer subtree))))))
-            elt)
-          (apply func args)))
+            ;; must work around nasty quoting bug
+     (let* ((olps (org-tree-find-olp (org-tree-path-string
+             (with-current-buffer (org-get-agenda-file-buffer (cadr elt))
+                                        (goto-char (car (last elt)))
+                                        (org-get-outline-path t)))))
+            (subtree (org-with-point-at (car olps)
+                       (org-tree-resolve-subtree-file-name))))
+       (when (and subtree (equal (file-name-extension subtree) "org"))
+         ;; adjust the pointer here
+         (setf (cadr elt) subtree
+               (cddr elt)
+               (list ".*" (marker-position (or (cdr olps) (car olps)))))
+         ;; inject the children here
+         (setq elt (append elt
+                           (unless (org-tree-entry-member-in-multivalued-property
+                                    nil "TREE_SKIP" "refile" :inherit)
+            (org-refile-get-targets
+             (org-get-agenda-file-buffer subtree)))))))
+       elt)
+     (apply func args)))
 
 (defun org-tree-up-heading ()
   (unless (org-up-heading-safe)

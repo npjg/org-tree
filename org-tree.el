@@ -169,6 +169,18 @@ skip any text before the first headline."
     (unless (re-search-forward org-complex-heading-regexp nil :noerror)
       (goto-char p) nil)))
 
+(defun org-tree-entry-member-in-multivalued-property (pom property value &optional inherit)
+  "Is VALUE one of the words in the PROPERTY in entry at
+point-or-marker POM? With INHERIT, also check up the subtree for
+this property."
+  (let* ((old (if inherit
+                  (org-with-point-at (or pom (point-marker))
+                    (org-entry-get-with-inheritance property))
+                (org-entry-get pom property)))
+	 (values (and old (split-string old))))
+    (setq value (org-entry-protect-space value))
+    (member value values)))
+
 (defun org-tree-resolve-subtree-file-name (&optional pom)
   "Provide the full file name for the org-tree subtree at POM, or
 return nil if a subtree does not exist there. This function
@@ -220,8 +232,8 @@ All subtree files not explicitly excluded will be addded to
                    (rec (when subtree-exists
                           (org-tree-lookup-table-1 path subtree in-progress
                            (or agenda-exclude-subtrees
-                               (org-entry-member-in-multivalued-property
-                                nil "TREE_SKIP" "agenda"))))))
+                               (org-tree-entry-member-in-multivalued-property
+                                nil "TREE_SKIP" "agenda" :inherit))))))
               (if (and subtree-exists rec)
                   (append (list app) rec)
                 app)))))
@@ -238,7 +250,7 @@ This does not parse the subtree for deeper exclusion."
     (let ((subtree (org-tree-resolve-subtree-file-name nil)))
       (cond ((eq action 'deregister)
              (when subtree (setq org-agenda-files (delete subtree org-agenda-files)))
-             (if (org-entry-member-in-multivalued-property nil "TREE_SKIP" "agenda")
+             (if (org-tree-entry-member-in-multivalued-property nil "TREE_SKIP" "agenda" :inherit)
                  (message "Agenda exclusion already set for this subtree")
                (org-entry-add-to-multivalued-property nil "TREE_SKIP" "agenda")))
             ((eq action 'register)

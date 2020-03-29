@@ -34,9 +34,6 @@
 (defconst org-tree-path-separator "/"
   "The separator string with which to delineate path components.")
 
-(defconst org-tree-agenda-exclude-subtree-prop "AGENDA_EXCLUDE_SUBTREE"
-  "The property value used to define the subtree excluder.")
-
 (defconst org-keyword-prop-regexp "^[ \t]*#\\+[A-Z_]+:\\(\\s-*\\)\\S-+"
   "Again, it doesn't seem that org-mode supports these properties very well.")
 
@@ -223,8 +220,8 @@ All subtree files not explicitly excluded will be addded to
                    (rec (when subtree-exists
                           (org-tree-lookup-table-1 path subtree in-progress
                            (or agenda-exclude-subtrees
-                               (org-entry-get-with-inheritance
-                                org-tree-agenda-exclude-subtree-prop))))))
+                               (org-entry-member-in-multivalued-property
+                                nil "TREE_SKIP" "agenda"))))))
               (if (and subtree-exists rec)
                   (append (list app) rec)
                 app)))))
@@ -241,13 +238,12 @@ This does not parse the subtree for deeper exclusion."
     (let ((subtree (org-tree-resolve-subtree-file-name nil)))
       (cond ((eq action 'deregister)
              (when subtree (setq org-agenda-files (delete subtree org-agenda-files)))
-             (if (org-entry-get-multivalued-property nil
-                   org-tree-agenda-exclude-subtree-prop)
+             (if (org-entry-member-in-multivalued-property nil "TREE_SKIP" "agenda")
                  (message "Agenda exclusion already set for this subtree")
-               (org-entry-put nil org-tree-agenda-exclude-subtree-prop "t")))
+               (org-entry-add-to-multivalued-property nil "TREE_SKIP" "agenda")))
             ((eq action 'register)
              (when subtree (add-to-list 'org-agenda-files subtree))
-             (org-entry-delete nil org-tree-agenda-exclude-subtree-prop))))))
+             (org-entry-remove-from-multivalued-property nil "TREE_SKIP" "agenda"))))))
 
 (defun org-tree-lookup-table (&optional reverse force)
   "Return the entry path table, calculating it if necessary. If FORCE,

@@ -25,6 +25,7 @@
 (require 'org)
 (require 'cl)
 (require 'org-attach)
+(require 'org-global-props)
 
 (defgroup org-tree 'nil
   "Customization group for org-tree"

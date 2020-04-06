@@ -121,8 +121,9 @@ file name before parsing it.  View this function as the inverse of
    ((not (true-listp list)) (list list))
    (t (append (org-tree-flatten (car list)) (org-tree-flatten (cdr list))))))
 
-(defun org-tree-outline-level (&optional offset)
-  (+ (org-outline-level) (- (length (org-get-outline-path)) (or offset 0))))
+(defun org-tree-outline-level ()
+  (+ (org-outline-level) (save-excursion (goto-char (point-min))
+                                         (length (org-get-outline-path)))))
 
 (defun org-tree-path-list (path)
   "If PATH is not already a path list, convert it to a list by

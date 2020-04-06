@@ -109,18 +109,6 @@ file name before parsing it.  View this function as the inverse of
          (parent (file-name-directory fixed)))
     (cons parent (directory-file-name (string-remove-prefix (or parent "") file)))))
 
-(defun true-listp (object)
-  "Return non-`nil' if OBJECT is a true list."
-  (and (listp object)  (null (cdr (last object)))))
-
-(defun org-tree-flatten (list)
-  "Nondestructively return a flat version of LIST."
-  (cond
-   ((null list) nil)
-   ((atom list) (list list))
-   ((not (true-listp list)) (list list))
-   (t (append (org-tree-flatten (car list)) (org-tree-flatten (cdr list))))))
-
 (defun org-tree-outline-level ()
   (+ (org-outline-level) (save-excursion (goto-char (point-min))
                                          (length (org-get-outline-path)))))
@@ -146,7 +134,8 @@ With RELATIVE, do not start the path with an `org-tree-path-separator'."
 (defun org-tree-end-of-meta-data (func &rest args)
   "Apply `org-end-of-meta-data' unless we are before the first
 headline, then jump immediately after the file-wide metadata,
-which includes keyword arguments and such.
+which includes keyword properties but not plain text that appears
+before the first headline.
 
 In this alternate behavior, when argument FULL is non-nil, also
 skip any text before the first headline."
@@ -182,81 +171,28 @@ this property."
     (setq value (org-entry-protect-space value))
     (member value values)))
 
-(defun org-tree-resolve-subtree-file-name (&optional pom)
-  "Provide the full file name for the org-tree subtree at POM, or
-return nil if a subtree does not exist there. This function
-does not verify that the subtree is actually an org document;
-it can be any sort of document you wish, which allows easy
-overloading for other terminal points of your org project
-tree (say, a LaTeX document).
+(defun org-tree-resolve-subtree-file-name ()
+  "Provide the full file name for the logical subtree at point,
+or return nil if a logical subtree does not exist there. This
+function does not verify that the subtree is actually an org
+document; it can be any sort of document you wish, which allows
+easy overloading for other terminal points of your tree (say, a
+LaTeX document).
 
-An org-tree subtree is defined by the presence of an ID from
+A logical subtree is defined by the presence of an ID from
 `org-id-get', an attachment directory from `org-attach-dir', and
 an extant file in the attachment directory with name specified by
-the SUBTREE property or, lacking that, by the format string
+the SUBTREE property or, lacking this specification, the format string
 `org-tree-default-subtree-file-name'."
-  (org-with-point-at (or pom (point-marker))
-    (let ((subtree (org-entry-get nil "SUBTREE" nil))
-          (id (org-id-get))
-          (ad (org-attach-dir)))
-      (if (equal subtree "") subtree
-        (when (and id ad) (ignore-errors (file-truename
-         (expand-file-name (or subtree
-          (org-tree-format org-tree-default-subtree-file-name)) ad))))))))
-
-(defun org-tree-lookup-table-1 (path subtree
-                                     &optional in-progress agenda-exclude-subtrees)
-  "Recursively build the internal lookup alist with initial path PATH
-for the subtree file SUBTREE.
-
-All subtree files not explicitly excluded will be addded to
-`org-agenda-files'.  To exclude a subtree, include property
-`AGENDA_EXCLUDE_SUBTREE'."
-  (with-current-buffer (org-get-agenda-file-buffer subtree)
-    (unless agenda-exclude-subtrees
-      (add-to-list 'org-agenda-files (buffer-file-name)))
-    (remove 'nil (org-map-entries
-      (lambda ()
-        (let ((subtree (org-tree-resolve-subtree-file-name)))
-          (when subtree
-            (let* ((path (if (or path (equal (file-truename (buffer-file-name))
-                                             (file-truename org-tree-root)))
-                         (append path (unless (org-before-first-heading-p)
-                                        (ad-with-originals 'org-get-outline-path
-                                          (org-get-outline-path t))))
-                       (org-tree-outline-path nil t)))
-                   (spath (org-tree-path-string path))
-                   (subtree-exists (and (not (equal subtree ""))
-                                        (equal (file-name-extension subtree) "org")
-                                        (ignore-errors (file-exists-p subtree))))
-                   (app (when subtree-exists (cons (list subtree (org-id-get)) spath)))
-                   (rec (when subtree-exists
-                          (org-tree-lookup-table-1 path subtree in-progress
-                           (or agenda-exclude-subtrees
-                               (org-tree-entry-member-in-multivalued-property
-                                nil "TREE_SKIP" "agenda" :inherit))))))
-              (if (and subtree-exists rec)
-                  (append (list app) rec)
-                app)))))
-      t 'file))))
-
-(defun org-tree-register-agenda-subtree (action &optional pom)
-  "Remove the given subtree file and its children from
-  `org-agenda-files', and prevent the subtree from being treated
-  as an agenda subtree again by setting `AGENDA_EXCLUDE_SUBTREE'.
-
-This does not parse the subtree for deeper exclusion."
-  (interactive)
-  (org-with-point-at pom
-    (let ((subtree (org-tree-resolve-subtree-file-name nil)))
-      (cond ((eq action 'deregister)
-             (when subtree (setq org-agenda-files (delete subtree org-agenda-files)))
-             (if (org-tree-entry-member-in-multivalued-property nil "TREE_SKIP" "agenda" :inherit)
-                 (message "Agenda exclusion already set for this subtree")
-               (org-entry-add-to-multivalued-property nil "TREE_SKIP" "agenda")))
-            ((eq action 'register)
-             (when subtree (add-to-list 'org-agenda-files subtree))
-             (org-entry-remove-from-multivalued-property nil "TREE_SKIP" "agenda"))))))
+  (let ((subtree (org-entry-get nil "SUBTREE" nil))
+        (id (org-id-get))
+        (ad (org-attach-dir)))
+    (when (and id ad)
+      (ignore-errors
+        (file-truename
+         (expand-file-name
+          (or subtree
+              (org-tree-format org-tree-default-subtree-file-name)) ad))))))
 
 (defun org-tree-lookup-table (&optional reverse force)
   "Return the entry path table, calculating it if necessary. If FORCE,
@@ -270,24 +206,62 @@ deepest subtrees appear above their parents, so
 The lookup table is stored as an alist, where each association
 has `car' as a list whose `car' is the physical path to the
 subtree file and chose `cdr' is the subtree's ID, and has as
-`cdr' the logical outline path of the subtree."
+`cdr' the logical outline path of the subtree.
+
+Parsing can be controlled via the TREE_SKIP property, which
+admits three options that are inherited:
+
+ agenda: do not include this subtree in `org-agenda-files';
+ refile: do not include this subtree in refile targets;
+ lookup: do not even parse this subtree for more logical subtrees.
+
+The last option can be especially useful for large journal files
+that would otherwise take a long time for `org-map-entries' to
+iterate over, with no real utility."
   (unless org-tree-root (user-error "Tree index cannot be nil"))
+  (setq org-tree-root (file-truename org-tree-root))
   (unless (and org-tree-lookup-table (not force))
-    (let (org-agenda-new-buffers org-mode-hook)
-      (setq org-tree-lookup-table
-            (org-tree-flatten (org-tree-lookup-table-1 nil org-tree-root)))
+    (message "Generating lookup table...")
+    (let (org-agenda-new-buffers org-mode-hook results)
+      (org-tree-lookup-table-1 nil org-tree-root)
+      (message "Generating lookup table... done")
+      (setq org-tree-lookup-table results)
       (setq org-tree-reversed-lookup-table
             (reverse org-tree-lookup-table))
       (org-release-buffers org-agenda-new-buffers)))
-      (if reverse org-tree-reversed-lookup-table org-tree-lookup-table))
+  (if reverse org-tree-reversed-lookup-table org-tree-lookup-table))
+
+(defun org-tree-lookup-table-1 (path subtree &optional exclude)
+  "Recursively build the internal lookup alist with initial outline path PATH
+for the logical subtree in file SUBTREE.
+
+All subtree files not explicitly excluded will be addded to
+`org-agenda-files'. To exclude a subtree, include
+string \"agenda\" in the TREE_SKIP property."
+  (with-current-buffer (org-get-agenda-file-buffer subtree)
+    (unless exclude
+      (add-to-list 'org-agenda-files (buffer-file-name)))
+    (org-map-entries
+     (lambda () (let ((subtree (org-tree-resolve-subtree-file-name)))
+                  (when (ignore-errors (and (equal (file-name-extension subtree) "org")
+                                            (file-exists-p subtree)))
+                    (let ((path (append path (ignore-errors
+                                               (ad-with-originals 'org-get-outline-path
+                                                 (org-get-outline-path t))))))
+                      (push (cons (list subtree (org-id-get)) (org-tree-path-string path)) results)
+                      (unless (org-tree-entry-member-in-multivalued-property nil "TREE_SKIP" "lookup")
+                        (org-tree-lookup-table-1 path subtree (or exclude (org-tree-entry-member-in-multivalued-property
+                                                                           nil "TREE_SKIP" "agenda" :inherit))))))))
+     t 'file)))
 
 (defun org-tree-lookup (path)
-  "Get the outline path corresponding to the subtree at path
-PATH. This function does not interpolate paths from roots;
-it directly maks from `org-tree-lookup-table'. Note that the root
-path has an ID of nil, and its path is `org-tree-root'."
+  "Get the outline path corresponding to the logical subtree in
+file PATH. This function does not interpolate paths from roots;
+it directly reads from `org-tree-lookup-table'. Note that the
+root outline path has an ID of nil, and its filesystem path is
+`org-tree-root'."
   (let ((path (org-tree-path-string path)))
-    (cond ((equal path org-tree-root) "/")
+    (cond ((equal path org-tree-root) org-tree-path-separator)
           (t (cdr (assoc path (org-tree-lookup-table)
                          (lambda (o1 o2) (equal (car o1) o2))))))))
 

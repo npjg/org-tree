@@ -283,19 +283,19 @@ return the highest subtree for which a match is found."
 
 (defun org-tree-find-olp (path)
   "Return a cons cell whose `car' is a marker to the physical
-location of PATH and whose `cdr' is a marker to the logical
-location of PATH.
+location of the subtree at PATH and whose `cdr' is a marker to
+the logical location of the subtree at PATH.
 
-Note that if PATH does not define an org-tree subtree, only the
+Note that if there is no logical subtree at PATH, only the
 `car' will be given, as the two paths are equal."
   (let* ((info (org-tree-reverse-lookup path :lax))
          (path (org-tree-path-list (cdadr info))))
     (cond ;; physical headline under logical subtree no subtree here: check to
           ;; make sure it's not actually in the physical location
-     (path (cons (or (ignore-errors (org-find-olp (append (list (caar info)) path)))
+     (path (cons (or (with-demoted-errors (org-find-olp (append (list (caar info)) path)))
                      (org-with-point-at
                          (unless (or (cadar info) (org-id-find (cadar info) :marker))
-                           (user-error "Subtree ID expected but not found"))
+                           (user-error "Subtree ID expected but not found: %s" info))
                        (org-find-olp (append
                            (funcall (ad-get-orig-definition #'org-get-outline-path) t)
                            path) :this-buffer)))
@@ -309,31 +309,24 @@ Note that if PATH does not define an org-tree subtree, only the
              (set-marker (make-marker) (point))))))))
 
 (defun org-tree-resolve-attachment-path (path attachment)
-  "Return the full physical path to attachment ATTACHMENT of the
-subtree at outline path PATH. A valid attachment directory,
-returned by `org-attach-dir' is required to to properly expand
-the file name Note that ATTACHMENT need not exist; it must just
-be a file name."
+  "Return the full filesystem path to attachment ATTACHMENT of
+the logical subtree at outline path PATH. A valid attachment
+directory, returned by `org-attach-dir' is required to to
+properly expand the file name. Note that ATTACHMENT need not
+exist; it must just be a file name."
   (let* ((ad (org-with-point-at
                  (org-id-find (or (cadar (org-tree-reverse-lookup path))
                                   (user-error "Subtree not found")) t)
                               (org-attach-dir))))
     (when ad (expand-file-name attachment ad))))
 
-(defun org-tree-outline-path (&optional func with-self use-cache as-string)
-  "Return the logical path of the physical headline at point.
-FUNC is an unused argument for compatibility with the advice
-framework.
-
-When the optional argument WITH-SELF is non-nil, the path aldo
-includes the current headline. See `org-get-outline-path' for
-documentation of USE-CACHE."
-   (ad-with-originals 'org-get-outline-path
-    (let ((res (append
-                (org-tree-path-list (or (org-tree-lookup
-                                         (file-truename (buffer-file-name))) ""))
-                (org-get-outline-path with-self use-cache))))
-      (if as-string (org-tree-path-string res) res))))
+(defun org-tree-outline-path (func &rest args)
+  "Return the complete logical ouline path of the headline at
+point, not just the outline path in the current file."
+  (append
+   (org-tree-path-list (or (org-tree-lookup
+                            (file-truename (buffer-file-name))) ""))
+   (apply func args)))
 
 (defun org-tree-push-lookup-table-maybe (subtree path id)
   "If SUBTREE references an org file, as determined from its
@@ -410,16 +403,20 @@ For more information on target location types, see `org-capture-templates'."
       (kill-buffer)))
   subtree))
 
-(defun org-tree-meta-return (func &optional arg)
-  "Insert a hew org-tree subtree. Calls `org-meta-return.'"
-  (funcall func arg)
-  (if (equal arg '(16))
-      (let* ((info (when (boundp 'org-tree-info) org-tree-info))
-             (headline (or (plist-get info :headline) (read-string "Headline: "))))
-        (insert headline)
-        (plist-put info :headline headline)
-        (org-tree-meta-return-internal info))))
+(defun org-tree-insert-logical-subtree (&optional arg invisible-ok top)
+  "Insert a hew logical subtree, using `org-insert-heading' to
+  insert the heading. See documentation there for explanation
+  ofhe arguments. When `org-tree-info' is bound as a plist, use
+  it to obtain the headline, attachment directory, project,
+  subtree file, and template."
+  (org-insert-heading arg invisible-ok top)
+  (let* ((info (when (boundp 'org-tree-info) org-tree-info))
+         (headline (or (plist-get info :headline) (read-string "Headline: "))))
+    (insert headline)
+    (plist-put info :headline headline)
+    (org-tree-meta-return-internal info)))
 
+;;;###autoload
 (define-minor-mode org-tree-mode
   "Logically combine many Orgdocuments into one. This minor mode
 ues `org-tree-lookup-table' to find the full outline path of any
@@ -548,6 +545,10 @@ subtree; otherwise, just copy them."
           (org-element-headline-parser (point-at-eol)))))
 
 (defun org-tree-refile (func &rest args)
+  "Refiling for `org-tree' parses the tree as deeply as directed
+by `org-tree-refile-max-level', and it does not parse subtrees
+for which the TREE_SKIP property contains the string \"agenda
+\"."
   (let ((heading-func (symbol-function 'org-back-to-heading))
         (subtree-func (symbol-function 'org-end-of-subtree)))
     (cl-letf (((symbol-function 'org-back-to-heading)

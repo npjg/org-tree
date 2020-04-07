@@ -1,4 +1,4 @@
-;;; org-tree.el --- make a semantic filesystem from your org files
+;;; org-tree.el ---extend your org subtrees across physical files
 
 ;; Copyright (C) 2020 Nathanael Gentry <nathanael.gentrydb8@gmail.com>
 ;;
@@ -36,30 +36,23 @@
   "The separator string with which to delineate path components.")
 
 (defconst org-keyword-prop-regexp "^[ \t]*#\\+[A-Z_]+:\\(\\s-*\\)\\S-+"
-  "Again, it doesn't seem that org-mode supports these properties very well.")
-
-(defvar org-tree-loose-text-post "\n\n"
-  "The text inserted after loose text is injected into a subtree file.")
-
-(defvar org-tree-refile-max-level 9
-  "The total subtree outline level considered in generating refile targets.
-
-Note that this restriction is supersed by the per-file maxlevel set in `org-refile-targets'.")
+  "Regular expression for keyword property matching (e.g.
+\"#+TITLE: org-tree\").")
 
 (defconst org-tree-format-spec '(?i id ?h headline)
   "An alist of the special formatting options available to
-  org-tree subtree file names. Using
+org-tree subtree file names. Using
   `org-tree-dynamic-format-spec', each of the symbols referenced
   here will be dynamically substituted for the dynamically-scoped
   named symbol.")
 
 (defcustom org-tree-default-subtree-file-name "%i.org"
-  "A format string that specifies the default fulename for
+  "A format string that specifies the default filename for
 subtree files, including the org extension.")
 
 (defcustom org-tree-default-subtree-template "#+TITLE: %h"
   "A format string that specifies the default template for
-  subtree files, including the org extension.")
+subtree files, including the org extension.")
 
 (defcustom org-tree-root nil
   "The org file that holds root-level subtrees."
@@ -67,10 +60,10 @@ subtree files, including the org extension.")
     :group 'org-tree)
 
 (defvar org-tree-lookup-table nil
-  "An alist mapping subtree file names to logical paths")
+  "An alist mapping subtree file names to logical paths.")
 
 (defsubst org-tree-safe-format (item spec)
-  "Applies `format-spec' to ITEM if it is a string; otherwise,
+  "Apply `format-spec' to ITEM if it is a string; otherwise,
 return the argument as it is."
   (if (and spec (stringp item)) (format-spec item spec) item))
 
@@ -87,12 +80,12 @@ dynamic scope, or nil otherwise."
 
 (defun org-tree-format (item)
   "Format ITEM according to `org-tree-format-spec', substituting
-  in dynamically bound variables."
+in dynamically bound variables."
   (when (stringp item) (format-spec item (org-tree-format-spec))))
 
 (defun org-tree-trim-string (string)
   "Remove white spaces in beginning and ending of STRING.
-White space here is any of: space, tab, emacs newline (line feed, ASCII 10)."
+White space here is any of: space, tab, Emacs newline (line feed, ASCII 10)."
   (replace-regexp-in-string "\\`[ \t\n]*" ""
                             (replace-regexp-in-string "[ \t\n]*\\'" "" string)))
 
@@ -111,6 +104,9 @@ file name before parsing it.  View this function as the inverse of
     (cons parent (directory-file-name (string-remove-prefix (or parent "") file)))))
 
 (defun org-tree-outline-level ()
+  "Determine how deep we are in the global tree. For the true
+global outline depth to be provided, `org-tree-mode' must be
+enabled."
   (+ (org-outline-level) (save-excursion (goto-char (point-min))
                                          (length (org-get-outline-path)))))
 
@@ -130,7 +126,33 @@ With RELATIVE, do not start the path with an `org-tree-path-separator'."
     (setq path (combine-and-quote-strings path org-tree-path-separator)))
 (concat (unless (equal (substring path 0 1) org-tree-path-separator)
 	  org-tree-path-separator)
-	path))
+        path))
+
+(defun org-tree-up-heading-safe ()
+  "Move to the headling line of which the present line is a
+subheading, even if we must move up the logical subtree. In-file
+heading movement is done with `org-up-heading-safe'. This version
+will thus not throw an error."
+  (unless (org-up-heading-safe)
+    ;; get the parent location
+    (let* ((info (org-tree-reverse-lookup (org-get-outline-path) :lax))
+           (place (and (or (cadar info)
+                           (user-error "Subtree ID expected but not found"))
+                       (org-id-find (cadar info) :marker))))
+      (switch-to-buffer (marker-buffer place))
+      (goto-char place))))
+
+(defun org-tree-goto-first-child ()
+  "Goto the first child, even if it is in the logical subtree. If
+the subtree is malformed (a combination of physical and logical
+headlines), give the logical branch headline priority."
+  (let ((subtree (org-tree-resolve-subtree-file-name)))
+    (if subtree
+        (progn
+          (find-file subtree)
+          (goto-char (point-min))
+          (re-search-forward org-complex-heading-regexp nil :noerror))
+      (org-goto-first-child))))
 
 (defun org-tree-end-of-meta-data (func &rest args)
   "Apply `org-end-of-meta-data' unless we are before the first
@@ -154,11 +176,25 @@ skip any text before the first headline."
      nil)))
 
 (defun org-tree-first-heading-in-file ()
-  "Goto the first heading in the current org file."
+  "Goto the first heading in the current file, or the start of
+the file if there is no first heading."
   (let ((p (point)))
     (goto-char (point-min))
     (unless (re-search-forward org-complex-heading-regexp nil :noerror)
       (goto-char p) nil)))
+
+(defun org-tree-paste-subtree (func &rest args)
+  "Circumvent the `org-kill-is-subtree-p' check that
+`org-paste-subtree' runs."
+  (flet ((org-kill-is-subtree-p (&optional txt) t))
+    (apply func args)))
+
+(defun org-tree-headline-parser ()
+  "Make sure that we are always in the right place to run
+`org-element-headline-parser', and return just the plist."
+  (cadr (progn
+          (beginning-of-line)
+          (org-element-headline-parser (point-at-eol)))))
 
 (defun org-tree-entry-member-in-multivalued-property (pom property value &optional inherit)
   "Is VALUE one of the words in the PROPERTY in entry at
@@ -194,6 +230,33 @@ the SUBTREE property or, lacking this specification, the format string
          (expand-file-name
           (or subtree
               (org-tree-format org-tree-default-subtree-file-name)) ad))))))
+
+(defun org-tree-resolve-attachment-path (path attachment)
+  "Return the full filesystem path to attachment ATTACHMENT of
+the logical subtree at outline path PATH. A valid attachment
+directory, returned by `org-attach-dir' is required to to
+properly expand the file name. Note that ATTACHMENT need not
+exist; it must just be a file name."
+  (let* ((ad (org-with-point-at
+                 (org-id-find (or (cadar (org-tree-reverse-lookup path))
+                                  (user-error "Subtree not found")) t)
+                              (org-attach-dir))))
+    (when ad (expand-file-name attachment ad))))
+
+(defun org-tree-resolve-subtree-project-directory ()
+  "Return the full path of a subtree's project directory."
+  (let ((project (org-entry-get nil "PROJECT")))
+    (if (file-name-absolute-p project)
+        project
+      (expand-file-name project (org-attach-dir)))))
+
+(defun org-tree-encode-subtree-project-directory (project)
+  "Truncate the project directory path if it lives inside the
+subtree's attachment directory."
+  (org-entry-put nil "PROJECT"
+  (if (string-prefix-p (file-name-as-directory (org-attach-dir)) project)
+      (file-name-nondirectory project)
+    project)))
 
 (defun org-tree-lookup-table (&optional reverse force)
   "Return the entry path table, calculating it if necessary. If FORCE,
@@ -309,18 +372,6 @@ Note that if there is no logical subtree at PATH, only the
                      (org-end-of-meta-data)
              (set-marker (make-marker) (point))))))))
 
-(defun org-tree-resolve-attachment-path (path attachment)
-  "Return the full filesystem path to attachment ATTACHMENT of
-the logical subtree at outline path PATH. A valid attachment
-directory, returned by `org-attach-dir' is required to to
-properly expand the file name. Note that ATTACHMENT need not
-exist; it must just be a file name."
-  (let* ((ad (org-with-point-at
-                 (org-id-find (or (cadar (org-tree-reverse-lookup path))
-                                  (user-error "Subtree not found")) t)
-                              (org-attach-dir))))
-    (when ad (expand-file-name attachment ad))))
-
 (defun org-tree-outline-path (func &rest args)
   "Return the complete logical ouline path of the headline at
 point, not just the outline path in the current file."
@@ -329,47 +380,18 @@ point, not just the outline path in the current file."
                             (file-truename (buffer-file-name))) ""))
    (apply func args)))
 
-(defun org-tree-push-lookup-table-maybe (subtree path id)
-  "If SUBTREE references an org file, as determined from its
-extension, add it into the `org-tree-lookup-table' variable."
-  (when (equal (file-name-extension subtree) "org")
-    (push (cons (list subtree id) (org-tree-path-string path)) org-tree-lookup-table)))
-
-(defun org-tree-capture-set-target-location (func &optional target)
-  "Add two additional org-capture target location types:
-
-        (olp \"org-tree/outline/path\")
-
-        (olp+attach base-target-type \"org-tree/outline/path\" \"path/to/attachment\"
-
-        (olp+subtree \"org-tree/outline/path\" \"node headline\" \"subtree file name\")
-
-For more information on target location types, see `org-capture-templates'."
-  (let ((args (org-capture-get :target)))
-    (pcase (or target args)
-      (`(olp ,outline-path)
-       (let ((m (cdr (org-tree-find-olp outline-path))))
-         (setq args '(function (lambda ())))
-         (set-buffer (marker-buffer m))
-         (org-capture-put-target-region-and-position)
-         (widen)
-         (goto-char m)
-         (set-marker m nil)))
-      (`(olp+attach ,type ,outline-path ,attach)
-       (setq args `(,type ,(org-tree-resolve-attachment-path outline-path attach))))
-      (`(olp+subtree ,outline-path ,headline ,subtree)
-       (flet ((org-capture-select-template (&optional keys)
-              `(" " " " entry (olp ,outline-path) ,headline :immediate-finish t)))
-         (let* ((org-capture-plist (let (org-capture-plist)
-                  (org-capture)
-                  org-capture-plist))
-                (buf (org-capture-get :buffer))
-                (loc (org-capture-get :insertion-point)))
-           (with-current-buffer buf
-             (goto-char loc)
-             (setq args `(file ,(let ((org-tree-info `(:subtree ,subtree)))
-                                  (org-meta-return '(16))))))))))
-    (funcall func args)))
+(defun org-tree-insert-logical-subtree (&optional arg invisible-ok top)
+  "Insert a hew logical subtree, using `org-insert-heading' to
+insert the heading. See documentation there for explanation
+  ofhe arguments. When `org-tree-info' is bound as a plist, use
+  it to obtain the headline, attachment directory, project,
+  subtree file, and template."
+  (org-insert-heading arg invisible-ok top)
+  (let* ((info (when (boundp 'org-tree-info) org-tree-info))
+         (headline (or (plist-get info :headline) (read-string "Headline: "))))
+    (insert headline)
+    (plist-put info :headline headline)
+    (org-tree-meta-return-internal info)))
 
 (defun org-tree-meta-return-internal (&optional info)
   (let* ((headline (plist-get info :headline))
@@ -404,98 +426,15 @@ For more information on target location types, see `org-capture-templates'."
       (kill-buffer)))
   subtree))
 
-(defun org-tree-insert-logical-subtree (&optional arg invisible-ok top)
-  "Insert a hew logical subtree, using `org-insert-heading' to
-  insert the heading. See documentation there for explanation
-  ofhe arguments. When `org-tree-info' is bound as a plist, use
-  it to obtain the headline, attachment directory, project,
-  subtree file, and template."
-  (org-insert-heading arg invisible-ok top)
-  (let* ((info (when (boundp 'org-tree-info) org-tree-info))
-         (headline (or (plist-get info :headline) (read-string "Headline: "))))
-    (insert headline)
-    (plist-put info :headline headline)
-    (org-tree-meta-return-internal info)))
-
-;;;###autoload
-(define-minor-mode org-tree-mode
-  "Logically combine many Orgdocuments into one. This minor mode
-ues `org-tree-lookup-table' to find the full outline path of any
-ement in the perspective tree."
-  :lighter " OP"
-  :global t
-  (if org-tree-mode
-      (progn
-        (org-tree-lookup-table)
-        (advice-add 'org-get-outline-path :around #'org-tree-outline-path)
-        (advice-add 'org-meta-return :around #'org-tree-meta-return)
-        (advice-add 'org-capture-set-target-location
-                    :around #'org-tree-capture-set-target-location)
-        (advice-add 'org-refile-get-targets
-                    :around #'org-tree-refile-get-targets)
-        (advice-add 'org-end-of-meta-data :around #'org-tree-end-of-meta-data)
-        (advice-add 'org-refile :around #'org-tree-refile))
-    (advice-remove 'org-get-outline-path #'org-tree-outline-path)
-    (advice-remove 'org-meta-return #'org-tree-meta-return)
-    (advice-remove 'org-capture-set-target-location
-                   #'org-tree-capture-set-target-location)
-    (advice-remove 'org-refile-get-targets #'org-tree-refile-get-targets)
-    (advice-remove 'org-end-of-meta-data #'org-tree-end-of-meta-data)
-    (advice-remove 'org-refile #'org-tree-refile)))
-
-(defun org-tree-resolve-subtree-project-directory ()
-  "Return the full path of a subtree's project directory."
-  (let ((project (org-entry-get nil "PROJECT")))
-    (if (file-name-absolute-p project)
-        project
-      (expand-file-name project (org-attach-dir)))))
-
-(defun org-tree-encode-subtree-project-directory (project)
-  "Truncate the project directory path if it lives inside the
-subtree's attachment directory."
-  (org-entry-put nil "PROJECT"
-  (if (string-prefix-p (file-name-as-directory (org-attach-dir)) project)
-      (file-name-nondirectory project)
-    project)))
-
-(defun org-tree-magit-clone (&optional headline)
-  "Create a new subtree and clone repository to its attachment
-directory.
-
-Unless optional argument HEADLINE is provided, set the subtree
-headline to the name of the remote repository. The PROJECT
-property is set to the name of the local directory chosen in
-`magit-clone-read-args' to hold the repository."
-  (interactive)
-  (let* ((org-tree-info `(:headline ,(or headline "")))
-         (default-directory (progn (org-meta-return '(16)) (org-attach-dir)))
-         (args (magit-clone-read-args)))
-    (unless headline (insert (file-name-nondirectory (car args))))
-    (apply #'magit-clone-internal args)
-    (org-tree-encode-subtree-project-directory
-     (file-name-nondirectory (cadr args)))))
-
-(defun org-tree-magit-init ()
-  "Create a new subtree and initialize a repository in its
-attachment directory. The repository subdirectory is given, by
-default, by the subtree headline."
-  (interactive)
-    (let* ((default-directory (progn (org-meta-return '(16)) (org-attach-dir)))
-           (buf (current-buffer))
-           (headline (plist-get (org-tree-headline-parser) :raw-value))
-           (project (file-name-as-directory
-                     (expand-file-name
-                      (read-directory-name
-                       "Create repository in: "
-                       (expand-file-name headline))))))
-      (magit-init project)
-      (with-current-buffer buf
-        (org-tree-synchronize-headline-title)
-        (org-tree-encode-subtree-project-directory project))))
+(defun org-tree-push-lookup-table-maybe (subtree path id)
+  "If SUBTREE references an org file, as determined from its
+extension, add it into the `org-tree-lookup-table' variable."
+  (when (equal (file-name-extension subtree) "org")
+    (push (cons (list subtree id) (org-tree-path-string path)) org-tree-lookup-table)))
 
 (defun org-tree-synchronize-headline-title ()
-  "Set the subtree file's TITLE property to the physical headline
-of the subtree."
+  "Set the logical subtree file's TITLE property to the physical
+headline of the subtree."
   (let ((org-agenda-new-buffers)
         (headline-physical (plist-get (org-tree-headline-parser) :raw-value)))
   (with-current-buffer
@@ -503,10 +442,28 @@ of the subtree."
     (org-global-prop-set "TITLE" headline-physical))
   (org-release-buffers org-agenda-new-buffers)))
 
+(defun org-tree-extract-subtree (&optional kill)
+  "Move the contents of the logical subtree at point to the
+physical subtree. With KILL, kill the contents of the logical
+subtree; otherwise, just copy them. This function is the inverse
+of `org-tree-extract-subtree'."
+  (save-excursion
+    (org-back-to-heading)
+    (let* ((subtree (or (org-tree-resolve-subtree-file-name)
+                        (user-error "No logical subtree to extract"))))
+      (with-current-buffer (org-get-agenda-file-buffer subtree)
+        (goto-char (point-min))
+        (funcall (if kill #'kill-region #'kill-ring-save)
+               (progn (org-end-of-meta-data) (point))
+               (point-max)))
+      (org-end-of-meta-data)
+      (org-tree-paste-subtree #'org-paste-subtree (1+ (org-current-level))))))
+
 (defun org-tree-inject-subtree (&optional no-kill)
   "Move the contents of the physical subtree at point to the
 logical subtree, creating one if necessary. With NO-KILL, do not
-remove the text from the physical subtree; just copy it."
+remove the text from the physical subtree; just copy it. This
+function is the inverse of `org-tree-extract-subtree'."
   (save-excursion
     (org-back-to-heading)
     (let* ((subtree
@@ -520,93 +477,32 @@ remove the text from the physical subtree; just copy it."
         (goto-char (point-max))
         (org-tree-paste-subtree #'org-paste-subtree)))))
 
-(defun org-tree-extract-subtree (&optional kill)
-  "Move the contents of the logical subtree at point to the
-physical subtree. With KILL, kill the contents of the logical
-subtree; otherwise, just copy them."
-  (save-excursion
-    (org-back-to-heading)
-    (let* ((subtree (or (org-tree-resolve-subtree-file-name)
-                        (user-error "No logical subtree to extract"))))
-      (with-current-buffer (org-get-agenda-file-buffer subtree)
-        (goto-char (point-min))
-        (funcall (if kill #'kill-region #'kill-ring-save)
-               (progn (org-end-of-meta-data) (point))
-               (point-max)))
-      (org-end-of-meta-data)
-      (org-tree-paste-subtree #'org-paste-subtree (1+ (org-current-level))))))
 
-(defun org-tree-paste-subtree (func &rest args)
-  (flet ((org-kill-is-subtree-p (&optional txt) t))
-    (apply func args)))
 
-(defun org-tree-headline-parser ()
-  (cadr (progn
-          (beginning-of-line)
-          (org-element-headline-parser (point-at-eol)))))
-
-(defun org-tree-refile (func &rest args)
-  "Refiling for `org-tree' parses the tree as deeply as directed
-by `org-tree-refile-max-level', and it does not parse subtrees
-for which the TREE_SKIP property contains the string \"agenda
-\"."
-  (let ((heading-func (symbol-function 'org-back-to-heading))
-        (subtree-func (symbol-function 'org-end-of-subtree)))
-    (cl-letf (((symbol-function 'org-back-to-heading)
-               (lambda (&optional invisible-ok)
-                 (ignore-errors (funcall heading-func invisible-ok))))
-             ((symbol-function 'org-end-of-subtree)
-              (lambda (&optional invisible-ok to-heading)
-                (ignore-errors (funcall subtree-func invisible-ok to-heading)))))
-      (apply func args))))
-
-(defun org-tree-refile-get-targets (func &rest args)
-  (let ((org-refile-targets (list (cons nil (cons :maxlevel 3)))))
-    (seq-partition (org-tree-flatten
-                    (apply #'org-tree-refile-get-targets-1 func args)) 4)))
-
-(defun org-tree-refile-get-targets-1 (func &rest args)
-  (mapc (lambda (elt)
-     ;; must work around nasty quoting bug
-     (let* ((olps (org-tree-find-olp (org-tree-path-string
-             (with-current-buffer (org-get-agenda-file-buffer (cadr elt))
-                                        (goto-char (car (last elt)))
-                                        (org-get-outline-path t)))))
-            (subtree (org-with-point-at (car olps)
-                       (org-tree-resolve-subtree-file-name))))
-       (if (and subtree (equal (file-name-extension subtree) "org"))
-         ;; adjust the pointer here
-         (progn (setf (cadr elt) subtree
-               (cddr elt)
-               (list ".*" (marker-position (or (cdr olps) (car olps)))))
-         ;; inject the children here
-         (add-to-list 'result elt)
-         (unless (or (org-tree-entry-member-in-multivalued-property
-                       nil "TREE_SKIP" "refile" :inherit)
-                      (> depth org-tree-refile-max-level))
-           (setq depth (1+ depth))
-           (funcall #'org-tree-refile-get-targets-1
-                    func (org-get-agenda-file-buffer subtree))))
-         (add-to-list 'result elt))))
-        (apply func args)))
-
-(defun org-tree-up-heading ()
-  (unless (org-up-heading-safe)
-    ;; get the parent location
-    (let* ((info (org-tree-reverse-lookup (org-get-outline-path) :lax))
-           (place (and (or (cadar info)
-                           (user-error "Subtree ID expected but not found"))
-                       (org-id-find (cadar info) :marker))))
-      (switch-to-buffer (marker-buffer place))
-      (goto-char place))))
-
-(defun org-tree-goto-first-child ()
-  (let ((subtree (org-tree-resolve-subtree-file-name)))
-    (if subtree
-        (progn
-          (find-file subtree)
-          (goto-char (point-min))
-          (re-search-forward org-complex-heading-regexp nil :noerror))
-      (org-goto-first-child))))
+;;;###autoload
+(define-minor-mode org-tree-mode
+  "Logically combine many Orgdocuments into one. This minor mode
+ues `org-tree-lookup-table' to find the full outline path of any
+ement in the perspective tree."
+  :lighter " OP"
+  :global t
+  (if org-tree-mode
+      (progn
+        (org-tree-lookup-table)
+        (advice-add 'org-get-outline-path :around #'org-tree-outline-path)
+        (advice-add 'org-capture-set-target-location
+                    :around #'org-tree-capture-set-target-location)
+        (advice-add 'org-refile-get-targets
+                    :around #'org-tree-refile-get-targets)
+        (advice-add 'org-end-of-meta-data :around #'org-tree-end-of-meta-data)
+        (advice-add 'org-refile :around #'org-tree-refile))
+    (advice-remove 'org-get-outline-path #'org-tree-outline-path)
+    (advice-remove 'org-capture-set-target-location
+                   #'org-tree-capture-set-target-location)
+    (advice-remove 'org-refile-get-targets #'org-tree-refile-get-targets)
+    (advice-remove 'org-end-of-meta-data #'org-tree-end-of-meta-data)
+    (advice-remove 'org-refile #'org-tree-refile)))
 
 (provide 'org-tree)
+
+;;; org-tree.el ends here

@@ -477,8 +477,6 @@ function is the inverse of `org-tree-extract-subtree'."
         (goto-char (point-max))
         (org-tree-paste-subtree #'org-paste-subtree)))))
 
-
-
 ;;;###autoload
 (define-minor-mode org-tree-mode
   "Logically combine many Orgdocuments into one. This minor mode

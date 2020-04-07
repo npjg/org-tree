@@ -1,26 +1,27 @@
 ;;; org-tree.el --- make a semantic filesystem from your org files
 
-;; Copyright (C) 2020 Nathanael Gentry <ngentry1@liberty.edu>
+;; Copyright (C) 2020 Nathanael Gentry <nathanael.gentrydb8@gmail.com>
 ;;
 ;; Licensed under the same terms as Emacs and under the MIT license.
 
-;; Author: Nathanael Gentry <ngentry1@liberty.edu>
+;; Author: Nathanael Gentry <nathanael.gentrydb8@gmail.com>
 ;; URL: https://github.com/npjg/org-tree
 ;; Created: 19-01-2020
-;; By: Nathanael Gentry <ngentry1@liberty.edu>
+;; By: Nathanael Gentry <nathanael.gentrydb8@gmail.com>
 ;; Keywords: semantic, workspace, org
 
 ;;; Commentary:
 
 ;; This package provides a middle road between keeping one huge org file and
-;; many separate ones. org-tree.el, through its included `org-tree-mode',
-;; overloads the term `subtree' to mean, in addition to its normal import, a
-;; headline with an ID and a `SUBTREE' property. These uniquely identify an org
-;; file whose contents appear to org-mode as a physical subtree under the
-;; headline.
+;; many separate ones. We introduce logical subtrees, which are not limited to
+;; one physical file. Thus, no matter where your files are spread on disk, you
+;; can view your org files as one tree. Through its included `org-tree-mode',
+;; this package overloads the term `subtree' to mean, in addition to its normal
+;; import, a headline with an ID and a `SUBTREE' property. These uniquely
+;; identify an org file whose contents appear to org-mode as a physical subtree
+;; under the headline.
 
 ;;; Code:
-
 
 (require 'org)
 (require 'cl)

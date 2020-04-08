@@ -8,6 +8,8 @@
 
 (require 'org-tree)
 
+(push '(org-capture-set-target-location :around org-tree-capture-set-target-location)  org-tree-advices-map)
+
 (defun org-tree-capture-set-target-location (func &optional target)
   "Add three additional org-capture target location types:
 

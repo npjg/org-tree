@@ -6,8 +6,6 @@
 
 ;;; Code:
 
-;;; org-tree-magit.el --- make a semantic filesystem from your org files
-
 (require 'org-tree)
 
 (defun org-tree-magit-clone (&optional headline)

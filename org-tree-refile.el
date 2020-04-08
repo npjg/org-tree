@@ -1,10 +1,15 @@
-;;; org-tree-capture.el --- refile to logical trees
+;;; org-tree-refile.el --- refile to logical trees
 
 ;; Copyright (C) 2020 Nathanael Gentry <nathanael.gentrydb8@gmail.com>
 
 ;; Licensed under the same terms as Emacs and under the MIT license.
 
 ;;; Code:
+
+(require 'org-tree)
+
+(push '(org-refile-get-targets :around org-tree-refile-get-targets) org-tree-advices-map)
+(push '(org-refile :around org-tree-refile) org-tree-advices-map)
 
 (defun org-tree-refile (func &rest args)
   "Refiling for `org-tree' parses the tree as deeply as directed

@@ -46,6 +46,10 @@ org-tree subtree file names. Using
   here will be dynamically substituted for the dynamically-scoped
   named symbol.")
 
+(defvar org-tree-advices-map
+  "The functions and advices that are applied when
+`org-tree-mode' is active.")
+
 (defcustom org-tree-default-subtree-file-name "%i.org"
   "A format string that specifies the default filename for
 subtree files, including the org extension.")
@@ -369,7 +373,7 @@ Note that if there is no logical subtree at PATH, only the
              (cons (org-id-find (cadar info) :markerp)
                    (with-current-buffer (org-get-agenda-file-buffer (caar info))
                      (goto-char (point-min))
-                     (org-end-of-meta-data)
+                     (org-tree-end-of-meta-data #'org-end-of-meta-data)
              (set-marker (make-marker) (point))))))))
 
 (defun org-tree-outline-path (func &rest args)
@@ -454,9 +458,9 @@ of `org-tree-extract-subtree'."
       (with-current-buffer (org-get-agenda-file-buffer subtree)
         (goto-char (point-min))
         (funcall (if kill #'kill-region #'kill-ring-save)
-               (progn (org-end-of-meta-data) (point))
+               (progn (org-tree-end-of-meta-data #'org-end-of-meta-data) (point))
                (point-max)))
-      (org-end-of-meta-data)
+      (org-tree-end-of-meta-data #'org-end-of-meta-data)
       (org-tree-paste-subtree #'org-paste-subtree (1+ (org-current-level))))))
 
 (defun org-tree-inject-subtree (&optional no-kill)
@@ -471,11 +475,24 @@ function is the inverse of `org-tree-extract-subtree'."
                 (org-tree-meta-return-internal
                  (list :headline (plist-get (org-tree-headline-parser):raw-value))))))
       (funcall (if no-kill #'kill-ring-save #'kill-region)
-               (progn (org-end-of-meta-data) (point))
+               (progn (org-tree-end-of-meta-data #'org-end-of-meta-data) (point))
                (progn (org-end-of-subtree) (point)))
       (with-current-buffer (org-get-agenda-file-buffer subtree)
         (goto-char (point-max))
         (org-tree-paste-subtree #'org-paste-subtree)))))
+
+(defun org-tree-refresh-advices (&optional disable)
+  "Refresh advices when `org-tree-mode' is enabled, for
+integrating functionality from packages."
+  (mapc (lambda (l)
+          (apply #'apply
+                 (if disable
+                     (list #'advice-remove (list (first l) (caddr l)))
+                   (list #'advice-add l))))
+        org-tree-advices-map)
+  nil)
+
+(setq org-tree-advices-map '((org-get-outline-path :around org-tree-outline-path)))
 
 ;;;###autoload
 (define-minor-mode org-tree-mode
@@ -487,19 +504,8 @@ ement in the perspective tree."
   (if org-tree-mode
       (progn
         (org-tree-lookup-table)
-        (advice-add 'org-get-outline-path :around #'org-tree-outline-path)
-        (advice-add 'org-capture-set-target-location
-                    :around #'org-tree-capture-set-target-location)
-        (advice-add 'org-refile-get-targets
-                    :around #'org-tree-refile-get-targets)
-        (advice-add 'org-end-of-meta-data :around #'org-tree-end-of-meta-data)
-        (advice-add 'org-refile :around #'org-tree-refile))
-    (advice-remove 'org-get-outline-path #'org-tree-outline-path)
-    (advice-remove 'org-capture-set-target-location
-                   #'org-tree-capture-set-target-location)
-    (advice-remove 'org-refile-get-targets #'org-tree-refile-get-targets)
-    (advice-remove 'org-end-of-meta-data #'org-tree-end-of-meta-data)
-    (advice-remove 'org-refile #'org-tree-refile)))
+        (org-tree-refresh-advices))
+    (org-tree-advices-map :disable)))
 
 (provide 'org-tree)
 

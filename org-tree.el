@@ -319,7 +319,11 @@ string \"agenda\" in the TREE_SKIP property."
                     (let ((path (append path (ignore-errors
                                                (ad-with-originals 'org-get-outline-path
                                                  (org-get-outline-path t))))))
-                      (push (cons (list subtree (org-id-get)) (org-tree-path-string path)) results)
+                      (push (cons (list subtree
+                                        (org-id-get)
+                                        (org-attach-dir)
+                                        (org-entry-get nil "PROJECT"))
+                                  (org-tree-path-string path)) results)
                       (unless (org-tree-entry-member-in-multivalued-property nil "TREE_SKIP" "lookup")
                         (org-tree-lookup-table-1 path subtree (or exclude (org-tree-entry-member-in-multivalued-property
                                                                            nil "TREE_SKIP" "agenda" :inherit))))))))

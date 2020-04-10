@@ -90,7 +90,14 @@ passed to `persp-switch'."
         (org-tree-persp-raise-subtree-buffer)
         (caadr info))))))
 
+(defun org-tree-persp-kill (funct &rest args)
+  (let ((func (symbol-function #'persp-names)))
+    (cl-letf (((symbol-function #'persp-names)
+               (symbol-function #'org-tree-persp-names-fontify)))
+      (call-interactively funct))))
+
 (push '(persp-switch :around org-tree-persp-switch) org-tree-advices-map)
+(push '(persp-kill :around org-tree-persp-kill) org-tree-advices-map)
 
 (provide 'org-tree-perspective)
 

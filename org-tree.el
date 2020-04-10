@@ -353,8 +353,7 @@ return the highest subtree for which a match is found."
                            (append (list (cdr rassoc))
                             (or (ignore-errors
                                   (substring (string-remove-prefix (cdr rassoc) path) 1)) ""))))
-             (t (list (list org-tree-root nil)
-                      (cons org-tree-path-separator (substring path 1))))))))
+             (t (user-error "Path not found: %s" path))))))
 
 (defun org-tree-find-olp (path)
   "Return a cons cell whose `car' is a marker to the physical

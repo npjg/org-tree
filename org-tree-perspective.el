@@ -13,6 +13,12 @@
   "The perspective-local variable that holds information on the
   currently active project.")
 
+(defvar org-tree-active-persp-formatter #'org-format-outline-path
+  "The function used to format active subtree perspectives in
+`persp-switch' and `persp-kill'. It will be called with one
+argument, the outline path to format in list form, and it should
+return the formatted path string.")
+
 (defface org-tree-persp-active-perspectives '((t
                                                :weight bold
                                                :underline t))
@@ -56,16 +62,26 @@ marked with the deisgnated face."
   (funcall (if org-tree-persp-path-list-sorted
                ;; dumb sort by text properties
                (lambda (l) (sort l (lambda (e m)
-                                     (and (text-properties-at 0 e)
-                                          (not (text-properties-at 0 m))))))
+                           (and (plist-get (text-properties-at 0 e) 'active)
+                                (not (plist-get (text-properties-at 0 m) 'active))))))
              #'identity)
            (let ((real-persps (apply func nil)))
              (mapcar (lambda (l)
-                       (apply #'propertize (cdr l)
-                              (when (member (cdr l)
-                                            real-persps)
-                                (list 'face 'org-tree-persp-active-perspectives))))
+                       (if (member (cdr l) real-persps)
+                           (propertize (funcall org-tree-active-persp-formatter
+                                    (org-tree-path-list (cdr l))
+                                    nil ""
+                                    org-tree-path-separator)
+                                    'active t)
+                         (cdr l)))
                      org-tree-lookup-table))))
+
+(defun org-tree-persp-names-fontify ()
+  "Apply active formatting to all the paths in `persp-names'."
+  (mapcar (lambda (l)
+            (funcall org-tree-active-persp-formatter
+                     (org-tree-path-list l) nil "" org-tree-path-separator))
+          (apply func nil)))
 
 (defun org-tree-persp-switch (func &rest args)
   "Switch to the perspective at outline path PATH, with ARGS

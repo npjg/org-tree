@@ -313,7 +313,9 @@ string \"agenda\" in the TREE_SKIP property."
     (unless exclude
       (add-to-list 'org-agenda-files (buffer-file-name)))
     (org-map-entries
-     (lambda () (let ((subtree (org-tree-resolve-subtree-file-name)))
+     (lambda () (unless (and (org-tree-entry-member-in-multivalued-property nil "TREE_SKIP" "lookup" :inherit)
+                             (not (org-tree-entry-member-in-multivalued-property nil "TREE_SKIP" "lookup")))
+                  (let ((subtree (org-tree-resolve-subtree-file-name)))
                   (when (ignore-errors (and (equal (file-name-extension subtree) "org")
                                             (file-exists-p subtree)))
                     (let ((path (append path (ignore-errors
@@ -327,7 +329,7 @@ string \"agenda\" in the TREE_SKIP property."
                       (unless (org-tree-entry-member-in-multivalued-property nil "TREE_SKIP" "lookup")
                         (org-tree-lookup-table-1 path subtree (or exclude (org-tree-entry-member-in-multivalued-property
                                                                            nil "TREE_SKIP" "agenda" :inherit))))))))
-     t 'file)))
+     t 'file))))
 
 (defun org-tree-lookup (path)
   "Get the outline path corresponding to the logical subtree in

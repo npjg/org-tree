@@ -53,7 +53,7 @@ in such a perspective."
   (unless (bound-and-true-p org-tree-persp-subtree)
     (user-error "Not in an org-perspective context"))
   (let ((buf (org-find-base-buffer-visiting org-tree-persp-subtree)))
-    (if buf (org-persp-add-and-switch-to-buffer buf) (find-file
+    (if buf (progn (persp-add-buffer buf) (switch-to-buffer buf)) (find-file
     org-tree-persp-subtree))))
 
 (defun org-tree-persp-names ()

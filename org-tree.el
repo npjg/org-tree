@@ -295,7 +295,7 @@ iterate over, with no real utility."
       (message "Generating lookup table... done")
       ;; hard-code the filesystem root record
       (setq org-tree-lookup-table
-            (push (cons (list org-tree-root nil nil nil) (concat org-tree-path-separator "Index"))
+            (push (cons (list org-tree-root nil nil nil) org-tree-path-separator)
                   results))
       (setq org-tree-reversed-lookup-table
             (reverse org-tree-lookup-table))

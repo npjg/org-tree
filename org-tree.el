@@ -354,7 +354,7 @@ return the highest subtree for which a match is found."
       (cond  (rassoc (list (car rassoc)
                            (append (list (cdr rassoc))
                             (or (ignore-errors
-                                  (substring (string-remove-prefix (cdr rassoc) path) 1)) ""))))
+                                  (string-remove-prefix (cdr rassoc) path)) ""))))
              (t (user-error "Path not found: %s" path))))))
 
 (defun org-tree-find-olp (path)

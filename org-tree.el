@@ -426,24 +426,20 @@ insert the heading. See documentation there for explanation
                      (unless (file-directory-p st)
                        (org-entry-put nil "SUBTREE" st))
                      (if (file-name-absolute-p st) st (expand-file-name st ad))))))
-  (unless (file-exists-p subtree)
-    (save-excursion
-      (beginning-of-line)
-      (setq headline
-            (plist-get (org-tree-headline-parser) :raw-value))
-      (find-file subtree)
-      (insert (org-tree-format
-               (or (plist-get info :template)
-                   org-tree-default-subtree-template)))
-      (save-buffer)
-      (kill-buffer)))
-  subtree))
-
-(defun org-tree-push-lookup-table-maybe (subtree path id)
-  "If SUBTREE references an org file, as determined from its
-extension, add it into the `org-tree-lookup-table' variable."
-  (when (equal (file-name-extension subtree) "org")
-    (push (cons (list subtree id) (org-tree-path-string path)) org-tree-lookup-table)))
+    (when (equal (file-name-extension subtree) "org")
+      (push (cons (list subtree id) (org-tree-path-string (org-get-outline-path t))) org-tree-lookup-table))
+    (unless (file-exists-p subtree)
+      (save-excursion
+        (beginning-of-line)
+        (setq headline
+              (plist-get (org-tree-headline-parser) :raw-value))
+        (find-file subtree)
+        (insert (org-tree-format
+                 (or (plist-get info :template)
+                     org-tree-default-subtree-template)))
+        (save-buffer)
+        (kill-buffer)))
+    subtree))
 
 (defun org-tree-synchronize-headline-title ()
   "Set the logical subtree file's TITLE property to the physical

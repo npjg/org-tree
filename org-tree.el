@@ -398,6 +398,7 @@ insert the heading. See documentation there for explanation
   ofhe arguments. When `org-tree-info' is bound as a plist, use
   it to obtain the headline, attachment directory, project,
   subtree file, and template."
+  (interactive)
   (org-insert-heading arg invisible-ok top)
   (let* ((info (when (boundp 'org-tree-info) org-tree-info))
          (headline (or (plist-get info :headline) (read-string "Headline: "))))

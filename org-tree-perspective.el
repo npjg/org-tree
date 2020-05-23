@@ -106,6 +106,15 @@ passed to `persp-switch'."
         (org-tree-persp-raise-subtree-buffer)
         (caadr info))))))
 
+(defun org-tree-persp-launch ()
+	"Launch a perspective from an org mode buffer."
+	(interactive)
+	(let ((info (org-tree-resolve-subtree-file-name)))
+		(if info
+				(persp-switch (org-tree-path-string (org-get-outline-path t))))
+		;; TODO: Finish recognizing other cases, like just opening attachments!
+	))
+
 (defun org-tree-persp-kill (funct &rest args)
   (let ((func (symbol-function #'persp-names)))
     (cl-letf (((symbol-function #'persp-names)
